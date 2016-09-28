@@ -68,7 +68,6 @@ vector<Cone> WalkPolytope(int HullIndex, Cone NewCone) {
 	Edge EdgeToTest;
 	int EdgeToTestIndex;
 	while(!EdgesToTest.empty()) {
-		// Ripped out cone containment. Is that a good idea?
 		EdgeToTestIndex = EdgesToTest.back();
 		EdgesToTest.pop_back();
 	
@@ -152,9 +151,9 @@ void DynamicEnumerate(Cone C) {
 	int SmallestInt = 10000000; // Lazy.
 	int SmallestIndex = -1;
 	for (size_t i = 0; i != C.ClosedIntersectionIndices.size(); i++) {
-		if ((C.ClosedIntersectionIndices[i].size() < SmallestInt)
+		if ((C.ClosedIntersectionIndices[i].size() / Hulls[i].Edges.size() < SmallestInt)
 		&&  (find(C.PolytopesVisited.begin(), C.PolytopesVisited.end(), i) == C.PolytopesVisited.end())) {
-			SmallestInt = C.ClosedIntersectionIndices[i].size();
+			SmallestInt = C.ClosedIntersectionIndices[i].size() / Hulls[i].Edges.size();
 			SmallestIndex = i;
 		};
 	};
@@ -318,9 +317,7 @@ int main(int argc, char* argv[]) {
 	cout << "Parallel time: " << ParallelTime / CLOCKS_PER_SEC << endl;
 	cout << "Cleanup time: " << double(clock() - CleanupStart) / CLOCKS_PER_SEC << endl;
 	cout << "GetCones time: " << GetConesTime / CLOCKS_PER_SEC << endl;
-	if (PreintersectTime != 0) {
-		cout << "Preintersection time: " << PreintersectTime / CLOCKS_PER_SEC << endl;
-	};
+	cout << "Preintersection time: " << PreintersectTime / CLOCKS_PER_SEC << endl;
 	cout << "Alg time: " << AlgTime / CLOCKS_PER_SEC << endl;
 	cout << "Test time: " << TestTime / CLOCKS_PER_SEC << endl;
 	cout << "Number of intersections: " << ConeIntersectionCount << endl;
