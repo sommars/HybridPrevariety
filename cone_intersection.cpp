@@ -12,21 +12,16 @@ using namespace std;
 using namespace Parma_Polyhedra_Library;
 namespace Parma_Polyhedra_Library {using IO_Operators::operator<<;}
 
-double ContainmentTime, IntersectionTime, ParallelTime, TestTime, GetConesTime;
+double ContainmentTime, IntersectionTime, ParallelTime, TestTime, GetConesTime, PolytopePickingTime;
 int ConeIntersectionCount;
-vector<Cone> ConeVector;
-vector<Hull> Hulls;
 int SpaceDimension;
 
 //------------------------------------------------------------------------------
-vector<Cone> WalkPolytope(int HullIndex, Cone NewCone) {
-	vector<Edge> Edges = Hulls[HullIndex].Edges;
-	vector<vector<int> > Pts = Hulls[HullIndex].Points;
-	map<vector<int>,int> PointToIndexMap = Hulls[HullIndex].PointToIndexMap;
+vector<Cone> WalkPolytope(int HullIndex, Cone &NewCone, vector<Hull> &Hulls) {
+	clock_t BeginTestTime = clock();
 	Recycle_Input dummy;
-	set<int> ClosedIntersectionIndices = NewCone.ClosedIntersectionIndices[HullIndex];
-	set<int> HOIntersectionIndices = NewCone.HOIntersectionIndices[HullIndex];
-	
+
+	TestTime += double(clock() - BeginTestTime);
 	//take a random vector from half open cone
 	vector<int> RandomVector(SpaceDimension, 0);
 	Generator_System gs = NewCone.HOPolyhedron.minimized_generators();
@@ -43,19 +38,19 @@ vector<Cone> WalkPolytope(int HullIndex, Cone NewCone) {
 		};
 	};
 	//take initial form using that vector.
-	vector<vector<int> > InitialForm = FindInitialForm(Pts, RandomVector);
+	vector<vector<int> > InitialForm = FindInitialForm(Hulls[HullIndex].Points, RandomVector);
 
 	set<int> InitialIndices;
 	for (vector<vector<int> >::iterator InitialFormItr=InitialForm.begin();
 	InitialFormItr != InitialForm.end(); InitialFormItr++) {
-		InitialIndices.insert(PointToIndexMap[*InitialFormItr]);
+		InitialIndices.insert(Hulls[HullIndex].PointToIndexMap[*InitialFormItr]);
 	};
 
 	// List of indices of edges to visit.
 	vector<int> EdgesToTest;
-	for(size_t EdgeIndex = 0; EdgeIndex != Edges.size(); EdgeIndex++) {
-		if (SetsDoIntersect(InitialIndices, Edges[EdgeIndex].PointIndices)
-		&& ( find(ClosedIntersectionIndices.begin(), ClosedIntersectionIndices.end(), EdgeIndex) != ClosedIntersectionIndices.end())
+	for(size_t EdgeIndex = 0; EdgeIndex != Hulls[HullIndex].Edges.size(); EdgeIndex++) {
+		if (SetsDoIntersect(InitialIndices, Hulls[HullIndex].Edges[EdgeIndex].PointIndices)
+		&& ( find(NewCone.ClosedIntersectionIndices[HullIndex].begin(), NewCone.ClosedIntersectionIndices[HullIndex].end(), EdgeIndex) != NewCone.ClosedIntersectionIndices[HullIndex].end())
 		) {
 			EdgesToTest.push_back(EdgeIndex);
 		};
@@ -65,19 +60,17 @@ vector<Cone> WalkPolytope(int HullIndex, Cone NewCone) {
 	// Explore edge skeleton
 	set<int> PretropGraphEdges;
 	set<int> NotPretropGraphEdges;
-	Edge EdgeToTest;
 	int EdgeToTestIndex;
 	while(!EdgesToTest.empty()) {
 		EdgeToTestIndex = EdgesToTest.back();
 		EdgesToTest.pop_back();
 	
 		clock_t BeginTime = clock();
-		EdgeToTest = Edges[EdgeToTestIndex];
 		TestTime += double(clock() - BeginTime);
 		
 		clock_t IntBegin = clock();
 
-		Constraint_System cs1 = EdgeToTest.EdgeCone.ClosedPolyhedron.minimized_constraints();
+		Constraint_System cs1 = Hulls[HullIndex].Edges[EdgeToTestIndex].EdgeCone.ClosedPolyhedron.minimized_constraints();
 		Constraint_System cs2 = NewCone.HOPolyhedron.minimized_constraints();
 		
 		for (Constraint_System::const_iterator i = cs2.begin(),
@@ -94,43 +87,38 @@ vector<Cone> WalkPolytope(int HullIndex, Cone NewCone) {
 		if (TempCone.ClosedPolyhedron.affine_dimension() > 0) {
 			PretropGraphEdges.insert(EdgeToTestIndex);
 			
-			// HOIntersectionIndices are ONLY useful so that we know whether or not to
-			// bother at this point.
-			if (find(HOIntersectionIndices.begin(), HOIntersectionIndices.end(), EdgeToTestIndex) != HOIntersectionIndices.end()) {
-				clock_t IntBegin = clock();
-				Constraint_System cs3 = EdgeToTest.EdgeCone.HOPolyhedron.minimized_constraints();
-			
-				for (Constraint_System::const_iterator i = cs2.begin(),
-				cs1_end = cs2.end(); i != cs1_end; ++i) {
-					cs3.insert(*i);
-				};
-				TempCone.HOPolyhedron = NNC_Polyhedron(cs3);
-			
-				TempCone.HOPolyhedron.affine_dimension();
-				TempCone.HOPolyhedron.minimized_constraints();
-				ConeIntersectionCount++;
-				IntersectionTime += double(clock() - IntBegin);
+		// HOIntersectionIndices are ONLY useful so that we know whether or not to
+		// bother at this point.
+			clock_t IntBegin = clock();
+			Constraint_System cs3 = Hulls[HullIndex].Edges[EdgeToTestIndex].EdgeCone.HOPolyhedron.minimized_constraints();
 		
+			for (Constraint_System::const_iterator i = cs2.begin(),
+			cs1_end = cs2.end(); i != cs1_end; ++i) {
+				cs3.insert(*i);
+			};
+			TempCone.HOPolyhedron = NNC_Polyhedron(cs3);
+		
+			TempCone.HOPolyhedron.affine_dimension();
+			TempCone.HOPolyhedron.minimized_constraints();
+			ConeIntersectionCount++;
+			IntersectionTime += double(clock() - IntBegin);
+	
 
-				if (TempCone.HOPolyhedron.affine_dimension() > 0) {
-					vector<set<int> > InitialSet1 (NewCone.ClosedIntersectionIndices.size());
-					vector<set<int> > InitialSet2 (NewCone.HOIntersectionIndices.size());
-					TempCone.ClosedIntersectionIndices = InitialSet1;
-					TempCone.HOIntersectionIndices = InitialSet2;
+			if (TempCone.HOPolyhedron.affine_dimension() > 0) {
+				vector<set<int> > InitialSet1 (NewCone.ClosedIntersectionIndices.size());
+				TempCone.ClosedIntersectionIndices = InitialSet1;
 
-					for (size_t i = 0; i != NewCone.ClosedIntersectionIndices.size(); i++) {
-						if (find(NewCone.PolytopesVisited.begin(), NewCone.PolytopesVisited.end(), i) == NewCone.PolytopesVisited.end()) {
-							TempCone.ClosedIntersectionIndices[i] = IntersectSets(EdgeToTest.EdgeCone.ClosedIntersectionIndices[i], NewCone.ClosedIntersectionIndices[i]);
-							TempCone.HOIntersectionIndices[i] = IntersectSets(EdgeToTest.EdgeCone.HOIntersectionIndices[i], NewCone.HOIntersectionIndices[i]);
-						};
+				for (size_t i = 0; i != NewCone.ClosedIntersectionIndices.size(); i++) {
+					if (find(NewCone.PolytopesVisited.begin(), NewCone.PolytopesVisited.end(), i) == NewCone.PolytopesVisited.end()) {
+						TempCone.ClosedIntersectionIndices[i] = IntersectSets(Hulls[HullIndex].Edges[EdgeToTestIndex].EdgeCone.ClosedIntersectionIndices[i], NewCone.ClosedIntersectionIndices[i]);
 					};
-					NewCones.push_back(TempCone);
 				};
+				NewCones.push_back(TempCone);
 			};
 			set<int>::iterator NeighborItr;
-			for(NeighborItr=EdgeToTest.NeighborIndices.begin();NeighborItr!=EdgeToTest.NeighborIndices.end(); NeighborItr++) {
+			for(NeighborItr=Hulls[HullIndex].Edges[EdgeToTestIndex].NeighborIndices.begin();NeighborItr!=Hulls[HullIndex].Edges[EdgeToTestIndex].NeighborIndices.end(); NeighborItr++) {
 				int Neighbor = *NeighborItr;
-				if (( find(ClosedIntersectionIndices.begin(), ClosedIntersectionIndices.end(), Neighbor) != ClosedIntersectionIndices.end())
+				if (( find(NewCone.ClosedIntersectionIndices[HullIndex].begin(), NewCone.ClosedIntersectionIndices[HullIndex].end(), Neighbor) != NewCone.ClosedIntersectionIndices[HullIndex].end())
 				&& ( find(PretropGraphEdges.begin(), PretropGraphEdges.end(), Neighbor) == PretropGraphEdges.end() )
 				&& ( find(NotPretropGraphEdges.begin(), NotPretropGraphEdges.end(), Neighbor) == NotPretropGraphEdges.end() )
 				&& ( find(EdgesToTest.begin(), EdgesToTest.end(), Neighbor) == EdgesToTest.end() )) {
@@ -146,14 +134,15 @@ vector<Cone> WalkPolytope(int HullIndex, Cone NewCone) {
 }
 
 //------------------------------------------------------------------------------
-void DynamicEnumerate(Cone C) {
+void DynamicEnumerate(Cone &C, vector<Hull> &Hulls, vector<vector<int> > &Pretropisms) {
+	clock_t BeginTime = clock();
 	// Figure out which polytope we want to pick 
 	int SmallestInt = 10000000; // Lazy.
 	int SmallestIndex = -1;
 	for (size_t i = 0; i != C.ClosedIntersectionIndices.size(); i++) {
-		if ((C.ClosedIntersectionIndices[i].size() / Hulls[i].Edges.size() < SmallestInt)
+		if ((C.ClosedIntersectionIndices[i].size() < SmallestInt)
 		&&  (find(C.PolytopesVisited.begin(), C.PolytopesVisited.end(), i) == C.PolytopesVisited.end())) {
-			SmallestInt = C.ClosedIntersectionIndices[i].size() / Hulls[i].Edges.size();
+			SmallestInt = C.ClosedIntersectionIndices[i].size();
 			SmallestIndex = i;
 		};
 	};
@@ -162,7 +151,9 @@ void DynamicEnumerate(Cone C) {
 		cin.get();
 	};
 	C.PolytopesVisited.insert(SmallestIndex);
-	vector<Cone> ResultCones = WalkPolytope(SmallestIndex, C);
+	
+	PolytopePickingTime += double(clock() - BeginTime);
+	vector<Cone> ResultCones = WalkPolytope(SmallestIndex, C, Hulls);
 	for (size_t i = 0; i != ResultCones.size(); i++) {
 		ResultCones[i].PolytopesVisited = C.PolytopesVisited;
 	};
@@ -171,12 +162,22 @@ void DynamicEnumerate(Cone C) {
 	};
 
 	if (ResultCones[0].PolytopesVisited.size() == Hulls.size()) {
-		for (size_t i = 0; i != ResultCones.size(); i++) {	
-			ConeVector.push_back(ResultCones[i]);
+		for (size_t i = 0; i != ResultCones.size(); i++) {
+			Generator_System gs = ResultCones[i].HOPolyhedron.minimized_generators();
+			for (Generator_System::const_iterator gsi = gs.begin(), gs_end = gs.end(); gsi != gs_end; ++gsi) {
+				if ((*gsi).is_point() or (*gsi).is_closure_point()) {
+					continue;
+				};
+				vector<int> Pt = GeneratorToPoint(*gsi);
+				if ( find(Pretropisms.begin(), Pretropisms.end(), Pt) == Pretropisms.end() ) {
+				//	gv.push_back(gen);
+				Pretropisms.push_back(GeneratorToPoint(*gsi));
+				};
+			};
 		};
 	} else {
 		for (size_t i = 0; i != ResultCones.size(); i++) {
-			DynamicEnumerate(ResultCones[i]);
+			DynamicEnumerate(ResultCones[i], Hulls, Pretropisms);
 		};
 	};
 };
@@ -204,6 +205,7 @@ int main(int argc, char* argv[]) {
 		return 1;
 	};
 	
+	vector<Hull> Hulls;
 	for (size_t i = 0; i != PolynomialSystemSupport.size(); i++) {
 		Hulls.push_back(NewHull(PolynomialSystemSupport[i]));
 	}
@@ -218,7 +220,6 @@ int main(int argc, char* argv[]) {
 			vector<set<int> > InitialSet1 (Hulls.size());
 			vector<set<int> > InitialSet2 (Hulls.size());
 			Hulls[i].Edges[j].EdgeCone.ClosedIntersectionIndices = InitialSet1;
-			Hulls[i].Edges[j].EdgeCone.HOIntersectionIndices = InitialSet2;
 		};
 	};
 	clock_t PreintTimeStart = clock();
@@ -245,13 +246,7 @@ int main(int argc, char* argv[]) {
 						NonInt++;
 					};
 					// Intersect pairs of half open cones. Osserman/Payne does not apply.
-					if (IntersectCones(Edges1[k].EdgeCone.HOPolyhedron, Edges2[l].EdgeCone.HOPolyhedron).affine_dimension() >= 1) {
-						Hulls[i].Edges[k].EdgeCone.HOIntersectionIndices[j].insert(l);
-						Hulls[j].Edges[l].EdgeCone.HOIntersectionIndices[i].insert(k);
-					} else {
-						NonInt++;
-					};
-					TotalInt += 2;
+					TotalInt++;
 				};
 			};
 		};
@@ -281,36 +276,18 @@ int main(int argc, char* argv[]) {
 	};
 	// TODO: Kill line below when not testing.
 	SmallestIndex = 0;
+	vector<vector<int> > Pretropisms;
 	for (size_t i = 0; i != Hulls[SmallestIndex].Edges.size(); i++) {
-		DynamicEnumerate(Hulls[SmallestIndex].Edges[i].EdgeCone);
+		DynamicEnumerate(Hulls[SmallestIndex].Edges[i].EdgeCone, Hulls, Pretropisms);
 	};
-	
-	cout << "ConeVector count: " << ConeVector.size() << endl;
-	cout << "Finished intersecting cones." << endl << endl << endl;
+
 	clock_t CleanupStart = clock();
-	vector<Generator> gv;
 	vector<Cone>::iterator PolyItr;
 	double AlgTime = double(clock() - AlgorithmStartTime);
 	// This is parsing and displaying all of the pretropisms.
-	vector<vector<int> > Pretropisms;
-	for (PolyItr=ConeVector.begin(); PolyItr != ConeVector.end(); PolyItr++) {
-		cout << (*PolyItr).HOPolyhedron.affine_dimension() << endl;
-		Generator_System gs = (*PolyItr).HOPolyhedron.minimized_generators();
-		for (Generator_System::const_iterator gsi = gs.begin(),
-		gs_end = gs.end(); gsi != gs_end; ++gsi) {
-			Generator gen = *gsi;
-			if (gen.is_point() or gen.is_closure_point()) {
-				continue;
-			};
-			if ( find(gv.begin(), gv.end(), gen) == gv.end() ) {
-				gv.push_back(gen);
-				Pretropisms.push_back(GeneratorToPoint(gen));
-			};
-		};
-	};
 	sort(Pretropisms.begin(), Pretropisms.end());
 	PrintPoints(Pretropisms);
-	cout << "Number of pretropisms found: " << gv.size() << endl;
+	cout << "Number of pretropisms found: " << Pretropisms.size() << endl;
 	cout << "Hull time: " << HullTime / CLOCKS_PER_SEC << endl;
 	cout << "Containment time: " << ContainmentTime / CLOCKS_PER_SEC << endl;
 	cout << "Intersection time: " << IntersectionTime / CLOCKS_PER_SEC << endl;
@@ -320,5 +297,7 @@ int main(int argc, char* argv[]) {
 	cout << "Preintersection time: " << PreintersectTime / CLOCKS_PER_SEC << endl;
 	cout << "Alg time: " << AlgTime / CLOCKS_PER_SEC << endl;
 	cout << "Test time: " << TestTime / CLOCKS_PER_SEC << endl;
+	cout << "Polytope Picking time: " << PolytopePickingTime / CLOCKS_PER_SEC << endl;
 	cout << "Number of intersections: " << ConeIntersectionCount << endl;
+	
 }
