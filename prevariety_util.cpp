@@ -129,9 +129,26 @@ vector<int> ConstraintToPoint(Constraint c) { //page 251
 //------------------------------------------------------------------------------
 Hull NewHull(vector<vector<int> > Points) {
 	Hull H;
-
 	H.CPolyhedron = FindCPolyhedron(Points);
-	H.Points = GeneratorSystemToPoints(H.CPolyhedron.minimized_generators());
+	
+	// We put the points in an order here such that the order can later
+	// be used to make a unique sink orientation of the polytope.
+	vector<double> VectorForOrientation;
+	for (size_t i = 0; i != Points[0].size(); i++) {
+		VectorForOrientation.push_back(rand());
+	};
+	map<double,vector<int> > DoubleToPt;
+	vector<double> IPs;
+	for (size_t i = 0; i != Points.size(); i++) {
+		double IP = DoubleInnerProduct(Points[i], VectorForOrientation);
+		IPs.push_back(IP);
+		DoubleToPt[IP] = Points[i];
+	};
+	sort(IPs.begin(), IPs.end());
+	for (size_t i = 0; i != IPs.size(); i++) {
+		H.Points.push_back(DoubleToPt[IPs[i]]);
+	};
+
 	H.AffineDimension = H.CPolyhedron.affine_dimension();
 	H.SpaceDimension = H.CPolyhedron.space_dimension();
 		
@@ -181,7 +198,6 @@ Hull NewHull(vector<vector<int> > Points) {
 				Constraints.push_back(c);
 			};
 		};
-		
 		//If no non-strict inequalities exist, then you may simply throw the cone away.
 		//This process produces just one half open cone for each edge.
 		for (size_t j = 0; j != Constraints.size(); j++) {
@@ -211,7 +227,6 @@ Hull NewHull(vector<vector<int> > Points) {
 			};
 		};
 	};
-
 	for (size_t i = 0; i != HalfOpenCones.size(); i++) {
 		//take a random vector from cone
 		vector<int> RandomVector(H.SpaceDimension, 0);
@@ -403,6 +418,22 @@ int InnerProduct(vector<int> V1, vector<int> V2) {
 }
 
 //------------------------------------------------------------------------------
+double DoubleInnerProduct(vector<int> V1, vector<double> V2) {
+	/* 
+		Computes the inner product of two vectors.
+	*/
+	if (V1.size() != V2.size()) {
+		cout << "Internal Error: InnerProduct with different sizes" << endl;
+		cin.get();
+	};
+	double Result = 0;
+	for (size_t i = 0; i != V1.size(); i++) {
+		Result += V1[i] * V2[i];
+	}
+	return Result;
+}
+
+//------------------------------------------------------------------------------
 vector<vector<int> > FindInitialForm(vector<vector<int> > &Points, vector<int> &Vector) {
 	/*
 		Computes the initial form of a vector and a set of points.
@@ -429,6 +460,7 @@ vector<vector<int> > FindInitialForm(vector<vector<int> > &Points, vector<int> &
 
 	return InitialForm;
 }
+
 
 //------------------------------------------------------------------------------
 NNC_Polyhedron FindCPolyhedron(vector<vector<int> > Points) {

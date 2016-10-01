@@ -12,8 +12,9 @@ using namespace std;
 using namespace Parma_Polyhedra_Library;
 namespace Parma_Polyhedra_Library {using IO_Operators::operator<<;}
 
-double ContainmentTime, IntersectionTime, ParallelTime, TestTime, GetConesTime, PolytopePickingTime;
+double IntersectionTime, TestTime, PolytopePickingTime;
 int ConeIntersectionCount;
+NNC_Polyhedron VEC;
 
 //------------------------------------------------------------------------------
 vector<Cone> WalkPolytope(int HullIndex, Cone &NewCone, vector<Hull> &Hulls) {
@@ -99,12 +100,12 @@ vector<Cone> WalkPolytope(int HullIndex, Cone &NewCone, vector<Hull> &Hulls) {
 			TempCone.HOPolyhedron = NNC_Polyhedron(cs3);
 		
 			TempCone.HOPolyhedron.affine_dimension();
-			TempCone.HOPolyhedron.minimized_constraints();
 			ConeIntersectionCount++;
 			IntersectionTime += double(clock() - IntBegin);
-	
+
 
 			if (TempCone.HOPolyhedron.affine_dimension() > 0) {
+				TempCone.HOPolyhedron.minimized_constraints();
 				vector<set<int> > InitialSet1 (NewCone.ClosedIntersectionIndices.size());
 				TempCone.ClosedIntersectionIndices = InitialSet1;
 
@@ -191,6 +192,13 @@ int main(int argc, char* argv[]) {
 	}
 	int n = atoi(argv[1]);
 
+
+	vector<vector<int> > TESTER;
+//{ 1 0 0 }
+//{ 0 1 1 }
+//{ 0 0 1 }
+//{ 1 1 0 }
+
 	string SystemName = string(argv[2]);
 	vector<vector<vector<int> > > PolynomialSystemSupport;
 	if (SystemName == "reducedcyclicn") {
@@ -204,7 +212,8 @@ int main(int argc, char* argv[]) {
 			<< "reducedcyclicn, cyclicn, or random." << endl;
 		return 1;
 	};
-	
+
+	srand ( time(NULL) );
 	vector<Hull> Hulls;
 	for (size_t i = 0; i != PolynomialSystemSupport.size(); i++) {
 		Hulls.push_back(NewHull(PolynomialSystemSupport[i]));
@@ -234,11 +243,14 @@ int main(int argc, char* argv[]) {
 
 		for(int j = i+1; j != Hulls.size(); j++){
 			vector<Edge> Edges2 = Hulls[j].Edges;
-		
 			for(int k = 0; k != Edges1.size(); k++){
 				for(int l = 0; l != Edges2.size(); l++){
 					// Intersect pairs of closed cones. Osserman/Payne applies
-					if (IntersectCones(Edges1[k].EdgeCone.ClosedPolyhedron, Edges2[l].EdgeCone.ClosedPolyhedron).affine_dimension() >= ExpectedDim) {
+					if (
+					(IntersectCones(Edges1[k].EdgeCone.ClosedPolyhedron, Edges2[l].EdgeCone.ClosedPolyhedron).affine_dimension() >= ExpectedDim)
+					||
+					  (IntersectCones(Edges1[k].EdgeCone.HOPolyhedron, Edges2[l].EdgeCone.HOPolyhedron).affine_dimension() >= 1)
+					  ) {
 						Hulls[i].Edges[k].EdgeCone.ClosedIntersectionIndices[j].insert(l);
 						Hulls[j].Edges[l].EdgeCone.ClosedIntersectionIndices[i].insert(k);
 					} else {
@@ -280,23 +292,16 @@ int main(int argc, char* argv[]) {
 		DynamicEnumerate(Hulls[SmallestIndex].Edges[i].EdgeCone, Hulls, Pretropisms);
 	};
 
-	clock_t CleanupStart = clock();
 	vector<Cone>::iterator PolyItr;
 	double AlgTime = double(clock() - AlgorithmStartTime);
-	// This is parsing and displaying all of the pretropisms.
 	sort(Pretropisms.begin(), Pretropisms.end());
 	PrintPoints(Pretropisms);
 	cout << "Number of pretropisms found: " << Pretropisms.size() << endl;
 	cout << "Hull time: " << HullTime / CLOCKS_PER_SEC << endl;
-	cout << "Containment time: " << ContainmentTime / CLOCKS_PER_SEC << endl;
 	cout << "Intersection time: " << IntersectionTime / CLOCKS_PER_SEC << endl;
-	cout << "Parallel time: " << ParallelTime / CLOCKS_PER_SEC << endl;
-	cout << "Cleanup time: " << double(clock() - CleanupStart) / CLOCKS_PER_SEC << endl;
-	cout << "GetCones time: " << GetConesTime / CLOCKS_PER_SEC << endl;
 	cout << "Preintersection time: " << PreintersectTime / CLOCKS_PER_SEC << endl;
 	cout << "Alg time: " << AlgTime / CLOCKS_PER_SEC << endl;
 	cout << "Test time: " << TestTime / CLOCKS_PER_SEC << endl;
 	cout << "Polytope Picking time: " << PolytopePickingTime / CLOCKS_PER_SEC << endl;
 	cout << "Number of intersections: " << ConeIntersectionCount << endl;
-	
 }

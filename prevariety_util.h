@@ -76,6 +76,9 @@ vector<vector<int> > FindCandidateEdges(Hull H);
 int InnerProduct(vector<int> V1, vector<int> V2);
 
 //------------------------------------------------------------------------------
+double DoubleInnerProduct(vector<int> V1, vector<double> V2);
+
+//------------------------------------------------------------------------------
 vector<vector<int> > FindInitialForm(vector<vector<int> > &Points, vector<int> &Vector);
 
 //------------------------------------------------------------------------------
