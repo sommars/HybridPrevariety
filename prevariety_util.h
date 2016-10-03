@@ -9,7 +9,6 @@ class Cone {
 	public:
 		NNC_Polyhedron HOPolyhedron;
 		NNC_Polyhedron ClosedPolyhedron;
-		vector<set<int> > HOIntersectionIndices;
 		vector<set<int> > ClosedIntersectionIndices;
 		set<int> PolytopesVisited;
 };

@@ -14,7 +14,6 @@ namespace Parma_Polyhedra_Library {using IO_Operators::operator<<;}
 
 double IntersectionTime, TestTime, PolytopePickingTime;
 int ConeIntersectionCount;
-NNC_Polyhedron VEC;
 
 //------------------------------------------------------------------------------
 vector<Cone> WalkPolytope(int HullIndex, Cone &NewCone, vector<Hull> &Hulls) {
@@ -27,8 +26,9 @@ vector<Cone> WalkPolytope(int HullIndex, Cone &NewCone, vector<Hull> &Hulls) {
 	TestTime += double(clock() - BeginTestTime);
 	//take a random vector from half open cone
 	vector<int> RandomVector(Hulls[0].SpaceDimension, 0);
-	Generator_System gs = NewCone.HOPolyhedron.minimized_generators();
-	for (Generator_System::const_iterator i = gs.begin(),gs_end = gs.end(); i != gs_end; ++i) {
+	for (Generator_System::const_iterator i = 
+	NewCone.HOPolyhedron.minimized_generators().begin(), gs_end = 
+	NewCone.HOPolyhedron.minimized_generators().end(); i != gs_end; ++i) {
 		if (!(*i).is_ray() && !(*i).is_line()) {
 			continue;
 		};
@@ -65,7 +65,6 @@ vector<Cone> WalkPolytope(int HullIndex, Cone &NewCone, vector<Hull> &Hulls) {
 	set<int> NotPretropGraphEdges;
 	int EdgeToTestIndex;
 	Edge *EdgeToTest;
-	Constraint_System cs2 = NewCone.HOPolyhedron.minimized_constraints();
 	while(!EdgesToTest.empty()) {
 		EdgeToTestIndex = EdgesToTest.back();
 		EdgesToTest.pop_back();
@@ -74,27 +73,25 @@ vector<Cone> WalkPolytope(int HullIndex, Cone &NewCone, vector<Hull> &Hulls) {
 		EdgeToTest = &(*HIndex).Edges[EdgeToTestIndex];
 		Constraint_System cs1 = (*EdgeToTest).EdgeCone.ClosedPolyhedron.minimized_constraints();
 		
-		for (Constraint_System::const_iterator i = cs2.begin(),
-		cs1_end = cs2.end(); i != cs1_end; ++i) {
+		for (Constraint_System::const_iterator i = NewCone.HOPolyhedron.minimized_constraints().begin(),
+		cs1_end = NewCone.HOPolyhedron.minimized_constraints().end(); i != cs1_end; ++i) {
 			cs1.insert(*i);
 		};
 		
 		Cone TempCone;
 		TempCone.ClosedPolyhedron = NNC_Polyhedron(cs1);
 		TempCone.ClosedPolyhedron.affine_dimension();
-		TempCone.ClosedPolyhedron.minimized_constraints();
 		ConeIntersectionCount++;
 		IntersectionTime += double(clock() - IntBegin);
 		if (TempCone.ClosedPolyhedron.affine_dimension() > 0) {
+			TempCone.ClosedPolyhedron.minimized_constraints();
 			PretropGraphEdges.insert(EdgeToTestIndex);
 			
-			// HOIntersectionIndices are ONLY useful so that we know whether or not to
-			// bother at this point.
 			clock_t IntBegin = clock();
 			Constraint_System cs3 = (*EdgeToTest).EdgeCone.HOPolyhedron.minimized_constraints();
 		
-			for (Constraint_System::const_iterator i = cs2.begin(),
-			cs1_end = cs2.end(); i != cs1_end; ++i) {
+			for (Constraint_System::const_iterator i = NewCone.HOPolyhedron.minimized_constraints().begin(),
+			cs1_end = NewCone.HOPolyhedron.minimized_constraints().end(); i != cs1_end; ++i) {
 				cs3.insert(*i);
 			};
 			TempCone.HOPolyhedron = NNC_Polyhedron(cs3);
@@ -192,13 +189,6 @@ int main(int argc, char* argv[]) {
 	}
 	int n = atoi(argv[1]);
 
-
-	vector<vector<int> > TESTER;
-//{ 1 0 0 }
-//{ 0 1 1 }
-//{ 0 0 1 }
-//{ 1 1 0 }
-
 	string SystemName = string(argv[2]);
 	vector<vector<vector<int> > > PolynomialSystemSupport;
 	if (SystemName == "reducedcyclicn") {
@@ -288,8 +278,14 @@ int main(int argc, char* argv[]) {
 	// TODO: Kill line below when not testing.
 	//SmallestIndex = 0;
 	vector<vector<int> > Pretropisms;
+	cout << "TOTAL CONES: " << Hulls[SmallestIndex].Edges.size() << endl;
 	for (size_t i = 0; i != Hulls[SmallestIndex].Edges.size(); i++) {
+		cout << i << endl;
+		int StartCount = ConeIntersectionCount;
+		clock_t OneConeStart = clock();
 		DynamicEnumerate(Hulls[SmallestIndex].Edges[i].EdgeCone, Hulls, Pretropisms);
+		cout << "Ints: " << ConeIntersectionCount - StartCount << endl;
+		cout << double(clock() - OneConeStart) / CLOCKS_PER_SEC << endl << endl;
 	};
 
 	vector<Cone>::iterator PolyItr;
