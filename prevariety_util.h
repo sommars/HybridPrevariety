@@ -7,8 +7,8 @@ namespace Parma_Polyhedra_Library {using IO_Operators::operator<<;}
 
 class Cone {
 	public:
-		C_Polyhedron HOPolyhedron;
-		C_Polyhedron ClosedPolyhedron;
+		NNC_Polyhedron HOPolyhedron;
+		NNC_Polyhedron ClosedPolyhedron;
 		vector<set<int> > ClosedIntersectionIndices;
 		set<int> PolytopesVisited;
 };
@@ -33,7 +33,7 @@ class Hull {
 		map<int,vector<int> > IndexToPointMap;
 		vector<Edge> Edges;
 		vector<Facet> Facets;
-		C_Polyhedron CPolyhedron;
+		NNC_Polyhedron CPolyhedron;
 		int AffineDimension;
 		int SpaceDimension;
 };
@@ -42,7 +42,7 @@ class Hull {
 double GetPolyhedralIntersectionTime();
 
 //------------------------------------------------------------------------------
-C_Polyhedron IntersectCones(C_Polyhedron &ph1, C_Polyhedron &ph2);
+NNC_Polyhedron IntersectCones(NNC_Polyhedron &ph1, NNC_Polyhedron &ph2);
 
 //------------------------------------------------------------------------------
 Cone IntersectCones(Cone C1, Cone C2);
@@ -57,7 +57,7 @@ vector<vector<int> > GeneratorSystemToPoints(Generator_System gs);
 vector<int> ConstraintToPoint(Constraint c);
 
 //------------------------------------------------------------------------------
-Hull NewHull(vector<vector<int> > Points);
+Hull NewHull(vector<vector<int> > Points, vector<double> VectorForOrientation);
 
 //------------------------------------------------------------------------------
 void FindFacets(Hull &H);
@@ -81,7 +81,7 @@ double DoubleInnerProduct(vector<int> V1, vector<double> V2);
 vector<vector<int> > FindInitialForm(vector<vector<int> > &Points, vector<int> &Vector);
 
 //------------------------------------------------------------------------------
-C_Polyhedron FindCPolyhedron(vector<vector<int> > Points);
+NNC_Polyhedron FindCPolyhedron(vector<vector<int> > Points);
 
 //------------------------------------------------------------------------------
 void PrintPoint(vector<int> Point);
@@ -93,10 +93,10 @@ void PrintPoints(vector<vector<int> > Points);
 void PrintPoint(set<int> Point);
 
 //------------------------------------------------------------------------------
-void PrintCPolyhedron(C_Polyhedron ph, bool PrintIf0Dim = true);
+void PrintCPolyhedron(NNC_Polyhedron ph, bool PrintIf0Dim = true);
 
 //------------------------------------------------------------------------------
-void PrintCPolyhedrons(vector<C_Polyhedron> phs, bool PrintIf0Dim = true);
+void PrintCPolyhedrons(vector<NNC_Polyhedron> phs, bool PrintIf0Dim = true);
 
 //------------------------------------------------------------------------------
 set<int> IntersectSets(set<int> S1, set<int> S2);

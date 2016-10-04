@@ -79,7 +79,7 @@ vector<Cone> WalkPolytope(int HullIndex, Cone &NewCone, vector<Hull> &Hulls) {
 		};
 		
 		Cone TempCone;
-		TempCone.ClosedPolyhedron = C_Polyhedron(cs1);
+		TempCone.ClosedPolyhedron = NNC_Polyhedron(cs1);
 		TempCone.ClosedPolyhedron.affine_dimension();
 		ConeIntersectionCount++;
 		IntersectionTime += double(clock() - IntBegin);
@@ -94,7 +94,7 @@ vector<Cone> WalkPolytope(int HullIndex, Cone &NewCone, vector<Hull> &Hulls) {
 			cs1_end = NewCone.HOPolyhedron.minimized_constraints().end(); i != cs1_end; ++i) {
 				cs3.insert(*i);
 			};
-			TempCone.HOPolyhedron = C_Polyhedron(cs3);
+			TempCone.HOPolyhedron = NNC_Polyhedron(cs3);
 		
 			TempCone.HOPolyhedron.affine_dimension();
 			ConeIntersectionCount++;
@@ -162,21 +162,11 @@ void DynamicEnumerate(Cone &C, vector<Hull> &Hulls, vector<vector<int> > &Pretro
 	if (ResultCones[0].PolytopesVisited.size() == Hulls.size()) {
 		for (size_t i = 0; i != ResultCones.size(); i++) {
 			Generator_System gs = ResultCones[i].HOPolyhedron.minimized_generators();
-//			cout << ResultCones[i].HOPolyhedron.minimized_generators() << endl;
 			for (Generator_System::const_iterator gsi = gs.begin(), gs_end = gs.end(); gsi != gs_end; ++gsi) {
 				if ((*gsi).is_point() or (*gsi).is_closure_point()) {
 					continue;
 				};
-				if ((*gsi).coefficient(Variable((*gsi).space_dimension() - 1)) != 0) {
-					continue;
-				};
-				
-				vector<int> Pt = GeneratorToPoint(*gsi);
-				if (find(Pretropisms.begin(), Pretropisms.end(), Pt) == Pretropisms.end()) {
-					Pretropisms.push_back(Pt);
-				};
-				
-/*
+
 				// There has to be a better way to do this. This works for now.
 				// Eventually, when switched to closed cones of dimension n+1, this
 				// won't be necessary.
@@ -188,7 +178,7 @@ void DynamicEnumerate(Cone &C, vector<Hull> &Hulls, vector<vector<int> > &Pretro
 					LE += Variable(j) * (*gsi).coefficient(Variable(j));
 				};
 				TempGS.insert(point(LE));
-				C_Polyhedron RayTestPoly(TempGS);
+				NNC_Polyhedron RayTestPoly(TempGS);
 				if (not ResultCones[i].HOPolyhedron.contains(RayTestPoly)) {
 					continue;
 				}
@@ -204,7 +194,6 @@ void DynamicEnumerate(Cone &C, vector<Hull> &Hulls, vector<vector<int> > &Pretro
 					};
 					Pretropisms.push_back(NegativePretropism);
 				};
-				*/
 			};
 		};
 	} else {
@@ -239,88 +228,18 @@ int main(int argc, char* argv[]) {
 
 	srand ( time(NULL) );
 	vector<Hull> Hulls;
+	// We put the points in an order here such that the order can later
+	// be used to make a unique sink orientation of the polytope.
+	vector<double> VectorForOrientation;
+	for (size_t i = 0; i != PolynomialSystemSupport[0][0].size(); i++) {
+		double dd = rand();
+		cout << dd << endl;
+		VectorForOrientation.push_back(dd);
+	};
 	for (size_t i = 0; i != PolynomialSystemSupport.size(); i++) {
-		Hulls.push_back(NewHull(PolynomialSystemSupport[i]));
+		Hulls.push_back(NewHull(PolynomialSystemSupport[i], VectorForOrientation));
 	}
 	
-	
-	
-	
-	
-	
-	
-	/*
-	vector<Cone> ConeVector;
-	
-	if (true == true) {
-		vector<vector<Cone> > Cones;
-		int HullIndex = 0;
-		vector<Hull>::iterator it;
-		for (it=Hulls.begin(); it != Hulls.end(); it++) {
-			vector<Edge> Edges = (*it).Edges;
-			vector<Cone> HullCones;
-			vector<Edge>::iterator itr;
-
-			for (itr=Edges.begin(); itr != Edges.end(); itr++) {
-				HullCones.push_back((*itr).EdgeCone);
-			};
-		
-			if (HullIndex == 0) {
-				ConeVector = HullCones;
-			} else {
-				Cones.push_back(HullCones);
-			};			
-			HullIndex++;
-		};
-
-		cout << "ConeVector count: " << ConeVector.size() << endl;
-		cout << "Cones count: " << Cones.size() << endl;
-		
-		//Iterate through Cones
-		vector<vector<Cone> >::iterator ConesItr;
-		int TreeLevel = 1;
-		for (ConesItr=Cones.begin(); ConesItr != Cones.end(); ConesItr++) {
-			vector<Cone> TestCones = *ConesItr;
-			vector<Cone> NewCones;
-			//Iterate through Cones
-			vector<Cone>::iterator ConeItr;
-			for (ConeItr=ConeVector.begin(); ConeItr != ConeVector.end(); ConeItr++) {
-				//Iterate through TestCones
-				Cone Cone1 = *ConeItr;
-				vector<Cone>::iterator TestConesItr;
-				for (TestConesItr=TestCones.begin(); TestConesItr != TestCones.end(); TestConesItr++) {
-					C_Polyhedron Temp = IntersectCones((*TestConesItr).HOPolyhedron, Cone1.HOPolyhedron);
-					ConeIntersectionCount++;
-					if (Temp.affine_dimension() == 0) {
-						continue;
-					};
-					Cone NewCone;
-					NewCone.HOPolyhedron = Temp;
-					NewCones.push_back(NewCone);
-				};
-			};
-			ConeVector = NewCones;
-			printf("Finished level %d of tree with %lu levels. %lu cones remain at this level. IntersectionCount = %d.\n", TreeLevel, Cones.size(), ConeVector.size(),ConeIntersectionCount);
-			TreeLevel++;
-		};
-		
-		for (size_t ii = 0; ii != ConeVector.size(); ii++) {
-			cout << ConeVector[ii].HOPolyhedron.minimized_generators() << endl;
-		};
-		cin.get();
-	}
-*/
-
-
-
-
-
-
-
-
-
-
-
 	double HullTime = double(clock() - StartTime);
 	clock_t AlgorithmStartTime = clock();
 	double PreintersectTime = 0;
@@ -391,7 +310,6 @@ int main(int argc, char* argv[]) {
 	//SmallestIndex = 0;
 	vector<vector<int> > Pretropisms;
 	cout << "TOTAL CONES: " << Hulls[SmallestIndex].Edges.size() << endl;
-	clock_t DynamicEnumerateTime = clock();
 	for (size_t i = 0; i != Hulls[SmallestIndex].Edges.size(); i++) {
 		cout << i << endl;
 		int StartCount = ConeIntersectionCount;
@@ -412,6 +330,5 @@ int main(int argc, char* argv[]) {
 	cout << "Alg time: " << AlgTime / CLOCKS_PER_SEC << endl;
 	cout << "Test time: " << TestTime / CLOCKS_PER_SEC << endl;
 	cout << "Polytope Picking time: " << PolytopePickingTime / CLOCKS_PER_SEC << endl;
-	cout << "Dynamic Enumerate time: " << double(clock() - DynamicEnumerateTime) / CLOCKS_PER_SEC << endl;
 	cout << "Number of intersections: " << ConeIntersectionCount << endl;
 }
