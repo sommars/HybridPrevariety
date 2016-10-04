@@ -166,10 +166,33 @@ void DynamicEnumerate(Cone &C, vector<Hull> &Hulls, vector<vector<int> > &Pretro
 				if ((*gsi).is_point() or (*gsi).is_closure_point()) {
 					continue;
 				};
-				vector<int> Pt = GeneratorToPoint(*gsi);
-				if ( find(Pretropisms.begin(), Pretropisms.end(), Pt) == Pretropisms.end() ) {
-				//	gv.push_back(gen);
-				Pretropisms.push_back(GeneratorToPoint(*gsi));
+
+				// There has to be a better way to do this. This works for now.
+				// Eventually, when switched to closed cones of dimension n+1, this
+				// won't be necessary.
+				Generator_System TempGS;
+				TempGS.insert((*gsi));
+				//
+				Linear_Expression LE;
+				for (size_t j = 0; j < (*gsi).space_dimension(); j++) {
+					LE += Variable(j) * (*gsi).coefficient(Variable(j));
+				};
+				TempGS.insert(point(LE));
+				NNC_Polyhedron RayTestPoly(TempGS);
+				if (not ResultCones[i].HOPolyhedron.contains(RayTestPoly)) {
+					continue;
+				}
+				
+				if ((*gsi).is_ray()) {
+					Pretropisms.push_back(GeneratorToPoint(*gsi));
+				} else if ((*gsi).is_line()) {
+					vector<int> PositivePretropism = GeneratorToPoint(*gsi);
+					Pretropisms.push_back(PositivePretropism);
+					vector<int> NegativePretropism;
+					for (size_t j = 0; j != PositivePretropism.size(); j++) {
+						NegativePretropism.push_back((-1) * PositivePretropism[j]);
+					};
+					Pretropisms.push_back(NegativePretropism);
 				};
 			};
 		};
