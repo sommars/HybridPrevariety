@@ -551,3 +551,99 @@ bool SetsDoIntersect(set<int> &S1, set<int> &S2) {
 	};
 	return false;
 }
+
+//------------------------------------------------------------------------------
+set<int> PreintersectWalkPolytope(int HullIndex, Cone NewCone, vector<Hull> &Hulls) {
+	Recycle_Input dummy;
+	Hull *HIndex;
+	HIndex = &Hulls[HullIndex];
+	set<int> Result;
+	//take a random vector from half open cone
+	vector<int> RandomVector(Hulls[0].SpaceDimension, 0);
+	for (Generator_System::const_iterator i = 
+	NewCone.ClosedPolyhedron.minimized_generators().begin(), gs_end = 
+	NewCone.ClosedPolyhedron.minimized_generators().end(); i != gs_end; ++i) {
+		if (!(*i).is_ray() && !(*i).is_line()) {
+			continue;
+		};
+		for (size_t j = 0; j != Hulls[0].SpaceDimension; j++) {
+			stringstream s;
+			s << (*i).coefficient(Variable(j));
+			int ToAppend;
+			istringstream(s.str()) >> ToAppend;
+			RandomVector[j] += ToAppend;
+		};
+	};
+	//take initial form using that vector.
+	vector<vector<int> > InitialForm = FindInitialForm((*HIndex).Points, RandomVector);
+
+	set<int> InitialIndices;
+	for (vector<vector<int> >::iterator InitialFormItr=InitialForm.begin();
+	InitialFormItr != InitialForm.end(); InitialFormItr++) {
+		InitialIndices.insert((*HIndex).PointToIndexMap[*InitialFormItr]);
+	};
+
+	// List of indices of edges to visit.
+	vector<int> EdgesToTest;
+	for(size_t EdgeIndex = 0; EdgeIndex != (*HIndex).Edges.size(); EdgeIndex++) {
+		if (SetsDoIntersect(InitialIndices, (*HIndex).Edges[EdgeIndex].PointIndices)) {
+			EdgesToTest.push_back(EdgeIndex);
+		};
+	};
+	
+	// Explore edge skeleton
+	set<int> PretropGraphEdges;
+	set<int> NotPretropGraphEdges;
+	int EdgeToTestIndex;
+	Edge *EdgeToTest;
+	int ExpectedDim = NewCone.ClosedPolyhedron.affine_dimension() - 1;
+	while(!EdgesToTest.empty()) {
+		EdgeToTestIndex = EdgesToTest.back();
+		EdgesToTest.pop_back();
+		clock_t IntBegin = clock();
+
+		EdgeToTest = &(*HIndex).Edges[EdgeToTestIndex];
+		Constraint_System cs1 = (*EdgeToTest).EdgeCone.ClosedPolyhedron.minimized_constraints();
+		
+		for (Constraint_System::const_iterator i = NewCone.ClosedPolyhedron.minimized_constraints().begin(),
+		cs1_end = NewCone.ClosedPolyhedron.minimized_constraints().end(); i != cs1_end; ++i) {
+			cs1.insert(*i);
+		};
+		
+		Cone TempCone;
+		TempCone.ClosedPolyhedron = NNC_Polyhedron(cs1);
+		TempCone.ClosedPolyhedron.affine_dimension();
+		if (TempCone.ClosedPolyhedron.affine_dimension() > 0) {
+			TempCone.ClosedPolyhedron.minimized_constraints();
+			PretropGraphEdges.insert(EdgeToTestIndex);
+			
+			clock_t IntBegin = clock();
+			Constraint_System cs3 = (*EdgeToTest).EdgeCone.HOPolyhedron.minimized_constraints();
+		
+			for (Constraint_System::const_iterator i = NewCone.HOPolyhedron.minimized_constraints().begin(),
+			cs1_end = NewCone.HOPolyhedron.minimized_constraints().end(); i != cs1_end; ++i) {
+				cs3.insert(*i);
+			};
+			TempCone.HOPolyhedron = NNC_Polyhedron(cs3);
+
+			if ((TempCone.ClosedPolyhedron.affine_dimension() >= ExpectedDim)
+			|| (TempCone.HOPolyhedron.affine_dimension() > 0)) {
+				Result.insert(EdgeToTestIndex);
+			};
+			set<int>::iterator NeighborItr;
+			for(NeighborItr=(*EdgeToTest).NeighborIndices.begin(); NeighborItr!=(*EdgeToTest).NeighborIndices.end(); NeighborItr++) {
+				int Neighbor = *NeighborItr;
+				if (( find(PretropGraphEdges.begin(), PretropGraphEdges.end(), Neighbor) == PretropGraphEdges.end() )
+				&& ( find(NotPretropGraphEdges.begin(), NotPretropGraphEdges.end(), Neighbor) == NotPretropGraphEdges.end() )
+				&& ( find(EdgesToTest.begin(), EdgesToTest.end(), Neighbor) == EdgesToTest.end() )) {
+					EdgesToTest.push_back(Neighbor);
+				};
+			};
+		} else {
+			NotPretropGraphEdges.insert(EdgeToTestIndex);
+		};
+
+	};
+	return Result;
+}
+

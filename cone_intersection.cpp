@@ -7,6 +7,9 @@
 #include <vector>
 #include <string>
 #include <sstream>
+#include <unistd.h>
+#include <iostream>
+#include <fstream>
 
 using namespace std;
 using namespace Parma_Polyhedra_Library;
@@ -206,7 +209,7 @@ void DynamicEnumerate(Cone &C, vector<Hull> &Hulls, vector<vector<int> > &Pretro
 //------------------------------------------------------------------------------
 int main(int argc, char* argv[]) {
 	clock_t StartTime = clock();
-	if (argc != 3) {
+	if (argc != 4) {
 		cout << "Internal error: expected two arguments." << endl;
 		return 1;
 	}
@@ -255,6 +258,29 @@ int main(int argc, char* argv[]) {
 	int TotalInt = 0;
 	int NonInt = 0;
 	// TODO: switch this to explore the edge skeleton method.
+	
+	
+/*
+	for(int i = 0; i != Hulls.size(); i++){
+		int ExpectedDim = Hulls[0].Edges[0].EdgeCone.ClosedPolyhedron.affine_dimension() - 1;
+		for (int k = 0; k != Hulls[i].Edges.size(); k++) {
+			Hulls[i].Edges[k].EdgeCone.PolytopesVisited.insert(i);
+		};
+
+		for(int j = i+1; j != Hulls.size(); j++) {
+			for(int k = 0; k != Hulls[i].Edges.size(); k++) {
+				set<int> EdgeIndices = PreintersectWalkPolytope(j, Hulls[i].Edges[k].EdgeCone, Hulls);
+				Hulls[i].Edges[k].EdgeCone.ClosedIntersectionIndices[j] = EdgeIndices;
+				for (set<int>::iterator q=EdgeIndices.begin(); q != EdgeIndices.end(); q++) {
+					Hulls[j].Edges[(*q)].EdgeCone.ClosedIntersectionIndices[i].insert(k);
+				};
+			};
+		};
+		printf("Finished level %d of pre-intersections.\n", i);
+	};
+*/
+	
+	
 	for(int i = 0; i != Hulls.size(); i++){
 		int ExpectedDim = Hulls[0].Edges[0].EdgeCone.ClosedPolyhedron.affine_dimension() - 1;
 		vector<Edge> Edges1 = Hulls[i].Edges;
@@ -267,11 +293,10 @@ int main(int argc, char* argv[]) {
 			for(int k = 0; k != Edges1.size(); k++){
 				for(int l = 0; l != Edges2.size(); l++){
 					// Intersect pairs of closed cones. Osserman/Payne applies
-					if (
-					(IntersectCones(Edges1[k].EdgeCone.ClosedPolyhedron, Edges2[l].EdgeCone.ClosedPolyhedron).affine_dimension() >= ExpectedDim)
-					||
-					  (IntersectCones(Edges1[k].EdgeCone.HOPolyhedron, Edges2[l].EdgeCone.HOPolyhedron).affine_dimension() >= 1)
-					  ) {
+					if (IntersectCones(Edges1[k].EdgeCone.ClosedPolyhedron, Edges2[l].EdgeCone.ClosedPolyhedron).affine_dimension() >= ExpectedDim) {
+						Hulls[i].Edges[k].EdgeCone.ClosedIntersectionIndices[j].insert(l);
+						Hulls[j].Edges[l].EdgeCone.ClosedIntersectionIndices[i].insert(k);					
+					} else if (IntersectCones(Edges1[k].EdgeCone.HOPolyhedron, Edges2[l].EdgeCone.HOPolyhedron).affine_dimension() >= 1) {
 						Hulls[i].Edges[k].EdgeCone.ClosedIntersectionIndices[j].insert(l);
 						Hulls[j].Edges[l].EdgeCone.ClosedIntersectionIndices[i].insert(k);
 					} else {
@@ -284,10 +309,27 @@ int main(int argc, char* argv[]) {
 		};
 		printf("Finished level %d of pre-intersections.\n", i);
 	};
+
+	
+	
+	
+	
+	
 	cout << "Total Intersections: " << TotalInt << ", Non Intersections: " << NonInt << endl;
 	PreintersectTime = double(clock() - PreintTimeStart);
 	cout << "Preintersection time: " << PreintersectTime / CLOCKS_PER_SEC << endl;
 
+/*	for (size_t i = 0; i != Hulls.size(); i++) {
+		for (size_t j = 0; j != Hulls[i].Edges.size(); j++) {
+			cout << Hulls[i].Edges[j].EdgeCone.ClosedPolyhedron.minimized_constraints() << endl;
+			for (size_t k = 0; k != Hulls[i].Edges[j].EdgeCone.ClosedIntersectionIndices.size(); k++) {
+				PrintPoint(Hulls[i].Edges[j].EdgeCone.ClosedIntersectionIndices[k]);
+			};
+			cout << endl;
+		};
+		cout << endl;
+	};
+*/
 	// This is one way to do it. It seems reasonable to pick sum, median, mean, min...
 	int SmallestInt = 1000000;
 	int SmallestIndex = -1;
@@ -310,7 +352,38 @@ int main(int argc, char* argv[]) {
 	//SmallestIndex = 0;
 	vector<vector<int> > Pretropisms;
 	cout << "TOTAL CONES: " << Hulls[SmallestIndex].Edges.size() << endl;
-	for (size_t i = 0; i != Hulls[SmallestIndex].Edges.size(); i++) {
+	size_t EdgeCount = Hulls[SmallestIndex].Edges.size();
+	cout << "EdgeCount : " << EdgeCount << endl;
+
+
+	int TotalProcessCount = atoi(argv[3]);
+	int AdditionalProcessCount = TotalProcessCount - 1;
+	vector<int> Chunks;
+	Chunks.push_back(0);
+	int BaseChunkSize = EdgeCount / TotalProcessCount;
+	for (size_t i = 0; i != TotalProcessCount; i++) {
+		int ExtraOne;
+		if (TotalProcessCount - (EdgeCount % TotalProcessCount) <= i) {
+			ExtraOne = 1;
+		} else {
+			ExtraOne = 0;
+		};
+		Chunks.push_back(Chunks[i] + BaseChunkSize + ExtraOne);
+	};
+	cout << "Chunk sizes" << endl;
+	PrintPoint(Chunks);
+	int ChunkId = 0;
+	pid_t pid;
+	for (size_t i = 0; i != AdditionalProcessCount; i++) {
+		ChunkId++;
+		pid = fork();
+		if (pid == 0) break;
+	};
+	if (pid > 0) {
+		ChunkId = 0;
+	};
+	
+	for (size_t i = Chunks[ChunkId]; i != Chunks[ChunkId+1]; i++) {
 		cout << i << endl;
 		int StartCount = ConeIntersectionCount;
 		clock_t OneConeStart = clock();
@@ -318,17 +391,35 @@ int main(int argc, char* argv[]) {
 		cout << "Ints: " << ConeIntersectionCount - StartCount << endl;
 		cout << double(clock() - OneConeStart) / CLOCKS_PER_SEC << endl << endl;
 	};
+	
 
 	vector<Cone>::iterator PolyItr;
 	double AlgTime = double(clock() - AlgorithmStartTime);
 	sort(Pretropisms.begin(), Pretropisms.end());
-	PrintPoints(Pretropisms);
-	cout << "Number of pretropisms found: " << Pretropisms.size() << endl;
-	cout << "Hull time: " << HullTime / CLOCKS_PER_SEC << endl;
-	cout << "Intersection time: " << IntersectionTime / CLOCKS_PER_SEC << endl;
-	cout << "Preintersection time: " << PreintersectTime / CLOCKS_PER_SEC << endl;
-	cout << "Alg time: " << AlgTime / CLOCKS_PER_SEC << endl;
-	cout << "Test time: " << TestTime / CLOCKS_PER_SEC << endl;
-	cout << "Polytope Picking time: " << PolytopePickingTime / CLOCKS_PER_SEC << endl;
-	cout << "Number of intersections: " << ConeIntersectionCount << endl;
+	
+	char filename[64];
+	sprintf (filename, "file%d.txt", ChunkId);
+	ofstream myfile;
+	myfile.open (filename);
+
+	vector<vector<int> >::iterator itr;
+	for (itr=Pretropisms.begin(); itr != Pretropisms.end(); itr++) {
+		vector<int>::iterator it;
+		myfile << "{ ";
+		for (it=(*itr).begin(); it != (*itr).end(); it++) {
+			myfile << (*it) << " ";
+		};
+		myfile << "}" << endl;
+	};
+
+	myfile << "Number of pretropisms found: " << Pretropisms.size() << endl;
+	myfile << "Hull time: " << HullTime / CLOCKS_PER_SEC << endl;
+	myfile << "Intersection time: " << IntersectionTime / CLOCKS_PER_SEC << endl;
+	myfile << "Preintersection time: " << PreintersectTime / CLOCKS_PER_SEC << endl;
+	myfile << "Alg time: " << AlgTime / CLOCKS_PER_SEC << endl;
+	myfile << "Test time: " << TestTime / CLOCKS_PER_SEC << endl;
+	myfile << "Polytope Picking time: " << PolytopePickingTime / CLOCKS_PER_SEC << endl;
+	myfile << "Number of intersections: " << ConeIntersectionCount << endl;
+	myfile.close();
+	cout << "Chunk " << ChunkId << " finished!" << endl;
 }

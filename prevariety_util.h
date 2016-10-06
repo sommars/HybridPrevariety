@@ -103,3 +103,6 @@ set<int> IntersectSets(set<int> S1, set<int> S2);
 
 //------------------------------------------------------------------------------
 bool SetsDoIntersect(set<int> &S1, set<int> &S2);
+
+//------------------------------------------------------------------------------
+set<int> PreintersectWalkPolytope(int HullIndex, Cone NewCone, vector<Hull> &Hulls);
