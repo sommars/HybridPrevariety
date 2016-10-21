@@ -15,7 +15,6 @@
 #include <chrono>
 #include <thread>
 
-std::mutex mtx;
 using namespace std;
 using namespace Parma_Polyhedra_Library;
 namespace Parma_Polyhedra_Library {using IO_Operators::operator<<;}
@@ -26,6 +25,8 @@ vector<vector<Cone> > SharedCones;
 vector<vector<int> > GlobalPretropisms;
 set<int> BoredProcesses;
 set<int> FinishedProcesses;
+mutex BPmtx;
+mutex SCmtx;
 
 //------------------------------------------------------------------------------
 vector<Cone> WalkPolytope(int HullIndex, Cone &NewCone, vector<Hull> &Hulls) {
@@ -211,74 +212,69 @@ vector<Cone> DynamicEnumerate(Cone &C, vector<Hull> &Hulls, vector<vector<int> >
 void ENUMERATETEST(vector<Hull> Hulls, int ProcessID, int ProcessCount) {
 	// Consider holding onto more than one cone. Could hold onto any number.
 	vector<vector<int> > Pretropisms;
-	Cone C;
-	bool ConeAssigned = false;
-	mtx.lock();
+	vector<Cone> MyCones;
+	int NumberOfConesToHoldOnto = 1;
+	BPmtx.lock();
 	BoredProcesses.insert(ProcessID);
-	mtx.unlock();
+	BPmtx.unlock();
 	while (true) {
-		if (not ConeAssigned) {
-			while (not ConeAssigned) {
-				for (size_t i = SharedCones.size() - 1; i !=-1; i--) {
-					if (SharedCones[i].size() > 0) {
-						mtx.lock();
-						if (SharedCones[i].size() == 0) {
-							mtx.unlock();
-							continue;
-						};
-						C = SharedCones[i].back();
-						SharedCones[i].pop_back();
-						BoredProcesses.erase(ProcessID);
-						mtx.unlock();
-						ConeAssigned = true;
-						break;
+		while (MyCones.size() == 0) {
+			for (size_t i = SharedCones.size() - 1; i !=-1; i--) {
+				if (SharedCones[i].size() > 0) {
+					SCmtx.lock();
+					if (SharedCones[i].size() == 0) {
+						SCmtx.unlock();
+						continue;
 					};
+					MyCones.push_back(SharedCones[i].back());
+					SharedCones[i].pop_back();
+					SCmtx.unlock();
+					BPmtx.lock();
+					BoredProcesses.erase(ProcessID);
+					BPmtx.unlock();
+					break;
 				};
-				if (not ConeAssigned) {
-					this_thread::sleep_for(chrono::milliseconds(100));
-					// check to see if we're done.
-					if (BoredProcesses.size() == ProcessCount) {
-						mtx.lock();
-						for (size_t i = 0; i != Pretropisms.size(); i++) {
-							GlobalPretropisms.push_back(Pretropisms[i]);
-						};
-						FinishedProcesses.insert(ProcessID);
-						mtx.unlock();
-						return;
+			};
+			if (MyCones.size() == 0) {
+				this_thread::sleep_for(chrono::milliseconds(100));
+				// check to see if we're done.
+				if (BoredProcesses.size() == ProcessCount) {
+					BPmtx.lock();
+					for (size_t i = 0; i != Pretropisms.size(); i++) {
+						GlobalPretropisms.push_back(Pretropisms[i]);
 					};
+					FinishedProcesses.insert(ProcessID);
+					BPmtx.unlock();
+					return;
 				};
 			};
 		};
-		vector<Cone> ResultCones = DynamicEnumerate(C, Hulls, Pretropisms);
-		if (ResultCones.size() > 0) {
-			C = ResultCones.back();
+		vector<Cone> ResultCones = DynamicEnumerate(MyCones.back(), Hulls, Pretropisms);
+		MyCones.pop_back();
+		while ((MyCones.size() < NumberOfConesToHoldOnto) && (ResultCones.size() > 0)) {
+			MyCones.push_back(ResultCones.back());
 			ResultCones.pop_back();
-			ConeAssigned = true;
-			if (ResultCones.size() > 0) {
-				int Index = ResultCones[0].PolytopesVisited.size() - 1;
-				for (size_t i = 0; i != ResultCones.size(); i++) {
-					mtx.lock();
-					SharedCones[Index].push_back(ResultCones[i]);
-					mtx.unlock();
-				};
+		};
+		if (ResultCones.size() > 0) {
+			int Index = ResultCones[0].PolytopesVisited.size() - 1;
+			for (size_t i = 0; i != ResultCones.size(); i++) {
+				SCmtx.lock();
+				SharedCones[Index].push_back(ResultCones[i]);
+				SCmtx.unlock();
 			};
 		} else {
-			ConeAssigned = false;
-			mtx.lock();
+			BPmtx.lock();
 			BoredProcesses.insert(ProcessID);
-			mtx.unlock();
+			BPmtx.unlock();
 		};
 	};
 };
 
 //------------------------------------------------------------------------------
 int main(int argc, char* argv[]) {
-	cout << version_major() << endl;
-	cout << version_minor() << endl;
-	cout << version_revision() << endl;
 	clock_t StartTime = clock();
 	if (argc != 4) {
-		cout << "Internal error: expected two arguments." << endl;
+		cout << "Internal error: expected three arguments." << endl;
 		return 1;
 	}
 	int n = atoi(argv[1]);
@@ -296,30 +292,20 @@ int main(int argc, char* argv[]) {
 			<< "reducedcyclicn, cyclicn, or random." << endl;
 		return 1;
 	};
-
-	srand ( time(NULL) );
+	
+	double RandomSeed = time(NULL);
+	cout <<fixed<< "Random seed value: " << RandomSeed << endl;
+	srand(RandomSeed);
 	vector<Hull> Hulls;
-	// We put the points in an order here such that the order can later
-	// be used to make a unique sink orientation of the polytope.
 	vector<double> VectorForOrientation;
 	for (size_t i = 0; i != PolynomialSystemSupport[0][0].size(); i++) {
 		double dd = rand();
-		cout << dd << endl;
 		VectorForOrientation.push_back(dd);
 	};
 	for (size_t i = 0; i != PolynomialSystemSupport.size(); i++) {
 		cout << "Hull " << i + 1 << " of " << PolynomialSystemSupport.size() << endl;
 		Hulls.push_back(NewHull(PolynomialSystemSupport[i], VectorForOrientation));
-		for (size_t j = 0; j != Hulls[i].Edges.size(); j++) {
-			//cout << endl;
-			Constraint_System cstemp = Hulls[i].Edges[j].EdgeCone.ClosedPolyhedron.constraints();
-			for (Constraint_System::const_iterator k = cstemp.begin(),
-			cs1_end = cstemp.end(); k != cs1_end; ++k) {
-			//	cout << *k << endl;
-			}; 
-		};
-		//cin.get();
-	}
+	};
 	
 	double HullTime = double(clock() - StartTime);
 
@@ -336,7 +322,7 @@ int main(int argc, char* argv[]) {
 	clock_t PreintTimeStart = clock();
 	int TotalInt = 0;
 	int NonInt = 0;
-	// TODO: switch this to explore the edge skeleton method.
+	// TODO: parallelize this.
 	for(int i = 0; i != Hulls.size(); i++){
 		int ExpectedDim = Hulls[0].Edges[0].EdgeCone.ClosedPolyhedron.affine_dimension() - 1;
 		vector<Edge> Edges1 = Hulls[i].Edges;
@@ -365,15 +351,10 @@ int main(int argc, char* argv[]) {
 		};
 		printf("Finished level %d of pre-intersections.\n", i);
 	};
-
-	
-	
-	
-	
-	
 	cout << "Total Intersections: " << TotalInt << ", Non Intersections: " << NonInt << endl;
 	PreintersectTime = double(clock() - PreintTimeStart);
 	cout << "Preintersection time: " << PreintersectTime / CLOCKS_PER_SEC << endl;
+	
 	// This is one way to do it. It seems reasonable to pick sum, median, mean, min...
 	int SmallestInt = 1000000;
 	int SmallestIndex = -1;
@@ -390,10 +371,9 @@ int main(int argc, char* argv[]) {
 
 	if (SmallestIndex == -1) {
 		cout << "Internal error: DynamicEnumerate had a value of -1 for SmallestIndex" << endl;
-		cin.get();
+		return 1;
 	};
 
-	
 	for (size_t i = 0; i != Hulls.size() - 1; i++) {
 		vector<Cone> Temp;
 		SharedCones.push_back(Temp);
@@ -404,14 +384,14 @@ int main(int argc, char* argv[]) {
 	
 	int TotalProcessCount = atoi(argv[3]);
 	if (TotalProcessCount > thread::hardware_concurrency()) {
-		cout << "INTERNAL ERROR: hardware_concurrency = " << thread::hardware_concurrency() << " but TotalProcessCount = " << TotalProcessCount << endl;
-		cin.get();
+		cout << "Internal error: hardware_concurrency = " << thread::hardware_concurrency() << " but TotalProcessCount = " << TotalProcessCount << endl;
+		return 1;
 	};
-	typedef std::function<void()> work_type;
+	typedef function<void()> work_type;
 	Thread_Pool<work_type> thread_pool(TotalProcessCount);
 	// Submit all conversion tasks.
-	for (size_t iiii = 0; iiii != TotalProcessCount; iiii++) {
-		work_type work = std::bind(ENUMERATETEST, Hulls, iiii, TotalProcessCount);
+	for (size_t i = 0; i != TotalProcessCount; i++) {
+		work_type work = bind(ENUMERATETEST, Hulls, i, TotalProcessCount);
 		thread_pool.submit(make_threadable(work));
 	}
 	// Wait for all workers to complete.
