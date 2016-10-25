@@ -29,11 +29,18 @@ set<int> FinishedProcesses;
 mutex BPmtx;
 mutex SCmtx;
 
+inline int CountVector(vector<bool> &A) {
+	int Result = 0;
+	for (size_t i = 0; i != A.size(); i++)
+		Result += A[i];
+	return Result;
+};
+
 //------------------------------------------------------------------------------
 inline vector<Cone> WalkPolytope(int HullIndex, Cone &NewCone, vector<Hull> &Hulls) {
 	Hull *HIndex;
 	HIndex = &Hulls[HullIndex];
-	set<int> *ClosedIntersectionIndices;
+	vector<bool> *ClosedIntersectionIndices;
 	ClosedIntersectionIndices = &NewCone.ClosedIntersectionIndices[HullIndex];
 	//take a random vector from half open cone
 	vector<int> RandomVector(Hulls[0].SpaceDimension, 0);
@@ -64,12 +71,9 @@ inline vector<Cone> WalkPolytope(int HullIndex, Cone &NewCone, vector<Hull> &Hul
 	vector<int> EdgesToTest;
 	for(size_t EdgeIndex = 0; EdgeIndex != (*HIndex).Edges.size(); EdgeIndex++) {
 		if (SetsDoIntersect(InitialIndices, (*HIndex).Edges[EdgeIndex].PointIndices)
-		&& ( find((*ClosedIntersectionIndices).begin(), (*ClosedIntersectionIndices).end(), EdgeIndex) != (*ClosedIntersectionIndices).end())
-		) {
+		&& ((*ClosedIntersectionIndices)[EdgeIndex] == 1))
 			EdgesToTest.push_back(EdgeIndex);
-		};
 	};
-	
 	vector<Cone> NewCones;
 	// Explore edge skeleton
 	set<int> PretropGraphEdges;
@@ -106,20 +110,22 @@ inline vector<Cone> WalkPolytope(int HullIndex, Cone &NewCone, vector<Hull> &Hul
 				TempCone.ClosedPolyhedron.minimized_constraints();
 				TempCone.HOPolyhedron.minimized_constraints();
 				IntersectionTime += double(clock() - IntBegin);
-				
-				vector<set<int> > InitialSet1 (NewCone.ClosedIntersectionIndices.size());
+				vector<vector<bool> > InitialSet1(NewCone.ClosedIntersectionIndices.size());
 				TempCone.ClosedIntersectionIndices = InitialSet1;
 				for (size_t i = 0; i != NewCone.ClosedIntersectionIndices.size(); i++) {
-					if (NewCone.PolytopesVisited[i] == 0)
-						TempCone.ClosedIntersectionIndices[i] = IntersectSets((*EdgeToTest).EdgeCone.ClosedIntersectionIndices[i], NewCone.ClosedIntersectionIndices[i]);
+					if (NewCone.PolytopesVisited[i] == 0) {
+						TempCone.ClosedIntersectionIndices[i] = NewCone.ClosedIntersectionIndices[i];
+						for (size_t j = 0; j != NewCone.ClosedIntersectionIndices[i].size(); j++) {
+							TempCone.ClosedIntersectionIndices[i][j] = (*EdgeToTest).EdgeCone.ClosedIntersectionIndices[i][j] & NewCone.ClosedIntersectionIndices[i][j];
+						};
+					};
 				};
-
 				NewCones.push_back(TempCone);
 			};
 			set<int>::iterator NeighborItr;
 			for(NeighborItr=(*EdgeToTest).NeighborIndices.begin(); NeighborItr!=(*EdgeToTest).NeighborIndices.end(); NeighborItr++) {
 				int Neighbor = *NeighborItr;
-				if (( find((*ClosedIntersectionIndices).begin(), (*ClosedIntersectionIndices).end(), Neighbor) != (*ClosedIntersectionIndices).end())
+				if (((*ClosedIntersectionIndices)[Neighbor] == 1)
 				&& ( find(PretropGraphEdges.begin(), PretropGraphEdges.end(), Neighbor) == PretropGraphEdges.end() )
 				&& ( find(NotPretropGraphEdges.begin(), NotPretropGraphEdges.end(), Neighbor) == NotPretropGraphEdges.end() )
 				&& ( find(EdgesToTest.begin(), EdgesToTest.end(), Neighbor) == EdgesToTest.end() )) {
@@ -140,9 +146,12 @@ inline vector<Cone> DynamicEnumerate(Cone &C, vector<Hull> &Hulls, vector<vector
 	int SmallestInt = 10000000; // Lazy.
 	int SmallestIndex = -1;
 	for (size_t i = 0; i != C.ClosedIntersectionIndices.size(); i++) {
-		if ((C.ClosedIntersectionIndices[i].size() < SmallestInt)
+		if (C.PolytopesVisited[i] == 1)
+			continue;
+		int TestInt = CountVector(C.ClosedIntersectionIndices[i]);
+		if ((TestInt < SmallestInt)
 		&& (C.PolytopesVisited[i] == 0)) {
-			SmallestInt = C.ClosedIntersectionIndices[i].size();
+			SmallestInt = TestInt;
 			SmallestIndex = i;
 		};
 	};
@@ -314,10 +323,15 @@ int main(int argc, char* argv[]) {
 
 	double PreintersectTime = 0;
 
-	for(int i = 0; i != Hulls.size(); i++){
+	for(size_t i = 0; i != Hulls.size(); i++) {
+		vector<vector<bool> > InitialSet1(Hulls.size());
+		for(size_t j = 0; j != Hulls.size(); j++) {
+			if (i == j) continue;
+			for(size_t k = 0; k != Hulls[j].Edges.size(); k++) {
+				InitialSet1[j].push_back(0);
+			};
+		};
 		for(int j = 0; j != Hulls[i].Edges.size(); j++){
-			vector<set<int> > InitialSet1 (Hulls.size());
-			vector<set<int> > InitialSet2 (Hulls.size());
 			Hulls[i].Edges[j].EdgeCone.ClosedIntersectionIndices = InitialSet1;
 		};
 	};
@@ -329,7 +343,7 @@ int main(int argc, char* argv[]) {
 		int ExpectedDim = Hulls[0].Edges[0].EdgeCone.ClosedPolyhedron.affine_dimension() - 1;
 		vector<Edge> Edges1 = Hulls[i].Edges;
 		for (int k = 0; k != Hulls[i].Edges.size(); k++) {
-			vector<int> VisitVector;
+			vector<int> VisitVector; // TODO: CLEAN UP!!
 			for (size_t l = 0; l != Hulls.size(); l++) {
 				VisitVector.push_back(0);
 			};
@@ -343,11 +357,11 @@ int main(int argc, char* argv[]) {
 				for(int l = 0; l != Edges2.size(); l++){
 					// Intersect pairs of closed cones. Osserman/Payne applies
 					if (IntersectCones(Edges1[k].EdgeCone.ClosedPolyhedron, Edges2[l].EdgeCone.ClosedPolyhedron).affine_dimension() >= ExpectedDim) {
-						Hulls[i].Edges[k].EdgeCone.ClosedIntersectionIndices[j].insert(l);
-						Hulls[j].Edges[l].EdgeCone.ClosedIntersectionIndices[i].insert(k);					
+						Hulls[i].Edges[k].EdgeCone.ClosedIntersectionIndices[j][l] = 1;
+						Hulls[j].Edges[l].EdgeCone.ClosedIntersectionIndices[i][k] = 1;					
 					} else if (IntersectCones(Edges1[k].EdgeCone.HOPolyhedron, Edges2[l].EdgeCone.HOPolyhedron).affine_dimension() >= 1) {
-						Hulls[i].Edges[k].EdgeCone.ClosedIntersectionIndices[j].insert(l);
-						Hulls[j].Edges[l].EdgeCone.ClosedIntersectionIndices[i].insert(k);
+						Hulls[i].Edges[k].EdgeCone.ClosedIntersectionIndices[j][l] = 1;
+						Hulls[j].Edges[l].EdgeCone.ClosedIntersectionIndices[i][k] = 1;
 					} else {
 						NonInt++;
 					};
@@ -361,14 +375,14 @@ int main(int argc, char* argv[]) {
 	cout << "Total Intersections: " << TotalInt << ", Non Intersections: " << NonInt << endl;
 	PreintersectTime = double(clock() - PreintTimeStart);
 	cout << "Preintersection time: " << PreintersectTime / CLOCKS_PER_SEC << endl;
-	
+
 	// This is one way to do it. It seems reasonable to pick sum, median, mean, min...
 	int SmallestInt = 1000000;
 	int SmallestIndex = -1;
 	for (size_t i = 0; i != Hulls.size(); i++) {
 		int TestValue = 0;
 		for (size_t j = 0; j != Hulls[i].Edges.size(); j++) {
-			TestValue += Hulls[i].Edges[j].EdgeCone.ClosedIntersectionIndices.size();
+//			TestValue += CountVector(Hulls[i].Edges[j].EdgeCone.ClosedIntersectionIndices); TODO:BROKEN!!!
 		};
 		if (TestValue < SmallestInt) {
 			TestValue = SmallestInt;
@@ -377,7 +391,7 @@ int main(int argc, char* argv[]) {
 	};
 
 	if (SmallestIndex == -1) {
-		cout << "Internal error: DynamicEnumerate had a value of -1 for SmallestIndex" << endl;
+		cout << "Internal error: found -1 for SmallestIndex" << endl;
 		return 1;
 	};
 
