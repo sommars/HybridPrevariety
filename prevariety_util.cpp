@@ -8,40 +8,6 @@ using namespace Parma_Polyhedra_Library;
 namespace Parma_Polyhedra_Library {using IO_Operators::operator<<;}
 
 //------------------------------------------------------------------------------
-NNC_Polyhedron IntersectCones(NNC_Polyhedron &ph1, NNC_Polyhedron &ph2) {
-	Constraint_System cs1 = ph1.minimized_constraints();
-	Constraint_System cs2 = ph2.minimized_constraints();
-	for (Constraint_System::const_iterator i = cs1.begin(),
-	cs1_end = cs1.end(); i != cs1_end; ++i) {
-		cs2.insert(*i);
-	}
-	Recycle_Input dummy;
-	NNC_Polyhedron ph(cs2,dummy);
-	ph.affine_dimension();
-	return ph;
-}
-
-//------------------------------------------------------------------------------
-Cone IntersectCones(Cone C1, Cone C2) {
-	cout << "Need to reimplement this." << endl;
-	cin.get();
-/*	
-	Constraint_System cs1 = C1.Polyhedron.minimized_constraints();
-	Constraint_System cs2 = C2.Polyhedron.minimized_constraints();
-	for (Constraint_System::const_iterator i = cs1.begin(),
-	cs1_end = cs1.end(); i != cs1_end; ++i) {
-		cs2.insert(*i);
-	}
-	Recycle_Input dummy;
-	NNC_Polyhedron ph(cs2,dummy);
-	ph.affine_dimension();
-	Cone C3;
-	C3.Polyhedron = ph;
-	*/
-//	return C3;
-}
-
-//------------------------------------------------------------------------------
 vector<int> GeneratorToPoint(Generator g) { //page 251
 	vector<int> Result;
 	for (size_t i = 0; i < g.space_dimension(); i++) {
@@ -131,6 +97,13 @@ Hull NewHull(vector<vector<int> > Points, vector<double> VectorForOrientation) {
 	Hull H;
 	H.CPolyhedron = FindCPolyhedron(Points);
 	
+	Constraint_System cstemp = H.CPolyhedron.minimized_constraints();
+	for (Constraint_System::const_iterator i = cstemp.begin(),
+	cs1_end = cstemp.end(); i != cs1_end; ++i) {
+		if ((*i).is_equality()) {
+			H.Eqs.push_back(*i);
+		};
+	};
 	map<double,vector<int> > DoubleToPt;
 	vector<double> IPs;
 	for (size_t i = 0; i != Points.size(); i++) {
@@ -206,6 +179,9 @@ Hull NewHull(vector<vector<int> > Points, vector<double> VectorForOrientation) {
 				};
 				//Introduce it as a strict inequality to describe the rest. Call recursively on this cone.
 				Cone NewCone;
+				for (size_t iii = 0; iii != H.Eqs.size(); iii++) {
+//					cs1.insert(H.Eqs[iii]);
+				};
 				NewCone.HOPolyhedron = NNC_Polyhedron(cs1);
 				HalfOpenCones.push_back(NewCone);
 				Constraints[j] = InequalityToStrictInequality(TempConstraint);
@@ -279,12 +255,6 @@ Hull NewHull(vector<vector<int> > Points, vector<double> VectorForOrientation) {
 		};
 	};
 
-	Generator_System gs;
-	Linear_Expression LE;
-	LE = 2*(Variable(0)) + 1*Variable(2) + 1*Variable(3) + 2*Variable(4) + 1*Variable(5) + 1*Variable(6);
-	gs.insert(ray(LE));
-	gs.insert(point(0*Variable(0)));
-	NNC_Polyhedron TestPoly(gs);
 	for (size_t i = 0; i != H.Edges.size(); i++) {
 		if (!H.Edges[i].HasEdgeCone) {
 			cout << "Internal Error: edge never found a cone" << endl;
@@ -396,22 +366,6 @@ vector<vector<int> > FindCandidateEdges(Hull H) {
 }
 
 //------------------------------------------------------------------------------
-int InnerProduct(vector<int> V1, vector<int> V2) {
-	/* 
-		Computes the inner product of two vectors.
-	*/
-	if (V1.size() != V2.size()) {
-		cout << "Internal Error: InnerProduct with different sizes" << endl;
-		cin.get();
-	};
-	int Result = 0;
-	for (size_t i = 0; i != V1.size(); i++) {
-		Result += V1[i] * V2[i];
-	}
-	return Result;
-}
-
-//------------------------------------------------------------------------------
 double DoubleInnerProduct(vector<int> V1, vector<double> V2) {
 	/* 
 		Computes the inner product of two vectors.
@@ -426,35 +380,6 @@ double DoubleInnerProduct(vector<int> V1, vector<double> V2) {
 	}
 	return Result;
 }
-
-//------------------------------------------------------------------------------
-vector<vector<int> > FindInitialForm(vector<vector<int> > &Points, vector<int> &Vector) {
-	/*
-		Computes the initial form of a vector and a set of points.
-	*/
-	if (Points.size() == 0) {
-		return Points;
-	};
-	vector<vector<int> > InitialForm;
-
-	InitialForm.push_back(Points[0]);
-	int MinimalIP = InnerProduct(Vector, Points[0]);
-
-	for (size_t i = 1; i != Points.size(); i++) {
-		vector<int> Point = Points[i];
-		int IP = InnerProduct(Vector, Point);
-		if (MinimalIP > IP) {
-			MinimalIP = IP;
-			InitialForm.clear();
-			InitialForm.push_back(Point);
-		} else if (IP == MinimalIP) {
-			InitialForm.push_back(Point);
-		};
-	};
-
-	return InitialForm;
-}
-
 
 //------------------------------------------------------------------------------
 NNC_Polyhedron FindCPolyhedron(vector<vector<int> > Points) {
@@ -516,41 +441,10 @@ void PrintCPolyhedrons(vector<NNC_Polyhedron> phs, bool PrintIf0Dim) {
 }
 
 //------------------------------------------------------------------------------
-set<int> IntersectSets(set<int> S1, set<int> S2) {
-	set<int>::iterator S1Itr = S1.begin();
-	set<int>::iterator S2Itr = S2.begin();
-	set<int> Result;
-	while ((S1Itr != S1.end()) && (S2Itr != S2.end())) {
-		if (*S1Itr < *S2Itr) {
-			++S1Itr;
-		}
-		else if (*S2Itr<*S1Itr) {
-			++S2Itr;
-		} else {
-			Result.insert(*S1Itr);
-			S1Itr++;
-			S2Itr++;
-		};
-	};
-	return Result;
-}
+
 
 //------------------------------------------------------------------------------
-bool SetsDoIntersect(set<int> &S1, set<int> &S2) {
-	set<int>::iterator S1Itr = S1.begin();
-	set<int>::iterator S2Itr = S2.begin();
-	while ((S1Itr != S1.end()) && (S2Itr != S2.end())) {
-		if (*S1Itr < *S2Itr) {
-			++S1Itr;
-		}
-		else if (*S2Itr<*S1Itr) {
-			++S2Itr;
-		} else {
-			return true;
-		};
-	};
-	return false;
-}
+
 
 //------------------------------------------------------------------------------
 set<int> PreintersectWalkPolytope(int HullIndex, Cone NewCone, vector<Hull> &Hulls) {
@@ -646,4 +540,3 @@ set<int> PreintersectWalkPolytope(int HullIndex, Cone NewCone, vector<Hull> &Hul
 	};
 	return Result;
 }
-
