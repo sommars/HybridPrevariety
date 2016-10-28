@@ -1,42 +1,49 @@
 #include <ppl.hh>
 #include <iostream>
 #include <list>
+#include <mutex>
 using namespace std;
 using namespace Parma_Polyhedra_Library;
 namespace Parma_Polyhedra_Library {using IO_Operators::operator<<;}
 
-class Cone {
-	public:
-		NNC_Polyhedron HOPolyhedron;
-		NNC_Polyhedron ClosedPolyhedron;
-		vector<set<int> > ClosedIntersectionIndices;
-		vector<int> PolytopesVisited;
+struct Cone {
+	NNC_Polyhedron HOPolyhedron;
+	NNC_Polyhedron ClosedPolyhedron;
+	vector<set<int> > ClosedIntersectionIndices; // 1 means that there is an intersection, 0 that there isn't
+	vector<int> PolytopesVisited; // 1 means visited, 0 means unvisited
 };
 
-class Edge {
-	public:
-		Cone EdgeCone;
-		bool HasEdgeCone;
-		set<int> PointIndices;
-		set<int> NeighborIndices;
+struct Edge {
+	Cone EdgeCone;
+	bool HasEdgeCone;
+	set<int> PointIndices;
+	set<int> NeighborIndices;
 };
 
-class Facet {
-	public:
-		set<int> PointIndices;
+struct Facet {
+	set<int> PointIndices;
 };
 
-class Hull {
-	public:
-		vector<vector<int> > Points;
-		map<vector<int>,int> PointToIndexMap;
-		map<int,vector<int> > IndexToPointMap;
-		vector<Edge> Edges;
-		vector<Facet> Facets;
-		NNC_Polyhedron CPolyhedron;
-		int AffineDimension;
-		int SpaceDimension;
-		vector<Constraint> Eqs;
+struct Hull {
+	vector<vector<int> > Points;
+	map<vector<int>,int> PointToIndexMap;
+	map<int,vector<int> > IndexToPointMap;
+	vector<Edge> Edges;
+	vector<Facet> Facets;
+	NNC_Polyhedron CPolyhedron;
+	int AffineDimension;
+	int SpaceDimension;
+	vector<Constraint> Eqs;
+};
+
+struct ThreadJob {
+	mutable mutex M;
+	vector<vector<Cone> > SharedCones;
+	ThreadJob(vector<vector<Cone> > ConeVector): SharedCones(ConeVector) {};
+	ThreadJob(const ThreadJob& TJ) {
+		lock_guard<mutex> lock(TJ.M);
+		SharedCones = TJ.SharedCones;
+	};
 };
 
 //------------------------------------------------------------------------------
@@ -106,7 +113,7 @@ inline vector<vector<int> > FindInitialForm(vector<vector<int> > &Points, vector
 		} else if (IP == MinimalIP)
 			InitialForm.push_back(*Point);
 	};
-
+	
 	return InitialForm;
 };
 
