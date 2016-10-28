@@ -22,25 +22,13 @@ namespace Parma_Polyhedra_Library {using IO_Operators::operator<<;}
 
 double IntersectionTime, TestTime;
 int ConeIntersectionCount;
-vector<vector<Cone> > SharedCones;
-vector<vector<int> > GlobalPretropisms;
-set<int> BoredProcesses;
-set<int> FinishedProcesses;
 mutex BPmtx;
-mutex SCmtx;
-
-inline int CountVector(vector<bool> &A) {
-	int Result = 0;
-	for (size_t i = 0; i != A.size(); i++)
-		Result += A[i];
-	return Result;
-};
 
 //------------------------------------------------------------------------------
 inline vector<Cone> WalkPolytope(int HullIndex, Cone &NewCone, vector<Hull> &Hulls) {
 	Hull *HIndex;
 	HIndex = &Hulls[HullIndex];
-	vector<bool> *ClosedIntersectionIndices;
+	set<int> *ClosedIntersectionIndices;
 	ClosedIntersectionIndices = &NewCone.ClosedIntersectionIndices[HullIndex];
 	//take a random vector from half open cone
 	vector<int> RandomVector(Hulls[0].SpaceDimension, 0);
@@ -71,9 +59,12 @@ inline vector<Cone> WalkPolytope(int HullIndex, Cone &NewCone, vector<Hull> &Hul
 	vector<int> EdgesToTest;
 	for(size_t EdgeIndex = 0; EdgeIndex != (*HIndex).Edges.size(); EdgeIndex++) {
 		if (SetsDoIntersect(InitialIndices, (*HIndex).Edges[EdgeIndex].PointIndices)
-		&& ((*ClosedIntersectionIndices)[EdgeIndex] == 1))
+		&& ( find((*ClosedIntersectionIndices).begin(), (*ClosedIntersectionIndices).end(), EdgeIndex) != (*ClosedIntersectionIndices).end())
+		) {
 			EdgesToTest.push_back(EdgeIndex);
+		};
 	};
+	
 	vector<Cone> NewCones;
 	// Explore edge skeleton
 	set<int> PretropGraphEdges;
@@ -110,22 +101,20 @@ inline vector<Cone> WalkPolytope(int HullIndex, Cone &NewCone, vector<Hull> &Hul
 				TempCone.ClosedPolyhedron.minimized_constraints();
 				TempCone.HOPolyhedron.minimized_constraints();
 				IntersectionTime += double(clock() - IntBegin);
-				vector<vector<bool> > InitialSet1(NewCone.ClosedIntersectionIndices.size());
+				
+				vector<set<int> > InitialSet1 (NewCone.ClosedIntersectionIndices.size());
 				TempCone.ClosedIntersectionIndices = InitialSet1;
 				for (size_t i = 0; i != NewCone.ClosedIntersectionIndices.size(); i++) {
-					if (NewCone.PolytopesVisited[i] == 0) {
-						TempCone.ClosedIntersectionIndices[i] = NewCone.ClosedIntersectionIndices[i];
-						for (size_t j = 0; j != NewCone.ClosedIntersectionIndices[i].size(); j++) {
-							TempCone.ClosedIntersectionIndices[i][j] = (*EdgeToTest).EdgeCone.ClosedIntersectionIndices[i][j] & NewCone.ClosedIntersectionIndices[i][j];
-						};
-					};
+					if (NewCone.PolytopesVisited[i] == 0)
+						TempCone.ClosedIntersectionIndices[i] = IntersectSets((*EdgeToTest).EdgeCone.ClosedIntersectionIndices[i], NewCone.ClosedIntersectionIndices[i]);
 				};
+
 				NewCones.push_back(TempCone);
 			};
 			set<int>::iterator NeighborItr;
 			for(NeighborItr=(*EdgeToTest).NeighborIndices.begin(); NeighborItr!=(*EdgeToTest).NeighborIndices.end(); NeighborItr++) {
 				int Neighbor = *NeighborItr;
-				if (((*ClosedIntersectionIndices)[Neighbor] == 1)
+				if (( find((*ClosedIntersectionIndices).begin(), (*ClosedIntersectionIndices).end(), Neighbor) != (*ClosedIntersectionIndices).end())
 				&& ( find(PretropGraphEdges.begin(), PretropGraphEdges.end(), Neighbor) == PretropGraphEdges.end() )
 				&& ( find(NotPretropGraphEdges.begin(), NotPretropGraphEdges.end(), Neighbor) == NotPretropGraphEdges.end() )
 				&& ( find(EdgesToTest.begin(), EdgesToTest.end(), Neighbor) == EdgesToTest.end() )) {
@@ -146,12 +135,9 @@ inline vector<Cone> DynamicEnumerate(Cone &C, vector<Hull> &Hulls, vector<vector
 	int SmallestInt = 10000000; // Lazy.
 	int SmallestIndex = -1;
 	for (size_t i = 0; i != C.ClosedIntersectionIndices.size(); i++) {
-		if (C.PolytopesVisited[i] == 1)
-			continue;
-		int TestInt = CountVector(C.ClosedIntersectionIndices[i]);
-		if ((TestInt < SmallestInt)
+		if ((C.ClosedIntersectionIndices[i].size() < SmallestInt)
 		&& (C.PolytopesVisited[i] == 0)) {
-			SmallestInt = TestInt;
+			SmallestInt = C.ClosedIntersectionIndices[i].size();
 			SmallestIndex = i;
 		};
 	};
@@ -214,54 +200,72 @@ inline vector<Cone> DynamicEnumerate(Cone &C, vector<Hull> &Hulls, vector<vector
 };
 
 //------------------------------------------------------------------------------
-void ENUMERATETEST(vector<Hull> Hulls, int ProcessID, int ProcessCount) {
+void ENUMERATETEST(vector<Hull> Hulls, int ProcessID, int ProcessCount, vector<ThreadJob> &ThreadJobs, vector<int> &BoredProcesses, int &FinishedProcessCount, vector<vector<int> > &GlobalPretropisms) {
 	// Consider holding onto more than one cone. Could hold onto any number.
 	vector<vector<int> > Pretropisms;
-	vector<Cone> MyCones;
-	int NumberOfConesToHoldOnto = 1;
-	BPmtx.lock();
-	BoredProcesses.insert(ProcessID);
-	BPmtx.unlock();
+	Cone C;
+	bool HasCone = false;
+	ThreadJob *TJ;
 	while (true) {
-		while (MyCones.size() == 0) {
-			for (size_t i = SharedCones.size() - 1; i !=-1; i--) {
-				if (SharedCones[i].size() > 0) {
-					SCmtx.lock();
-					if (SharedCones[i].size() == 0) {
-						SCmtx.unlock();
-						continue;
+		while (not HasCone) {
+			int j = ProcessID;
+			while (true) {
+				TJ = &ThreadJobs[j % ProcessCount];
+				(*TJ).M.lock();
+				for (size_t i = (*TJ).SharedCones.size() - 1; i !=-1; i--) {
+					if ((*TJ).SharedCones[i].size() > 0) {
+						C = (*TJ).SharedCones[i].back();
+						(*TJ).SharedCones[i].pop_back();
+						HasCone = true;
+						// This case happens when the process tried to steal from every process
+						// possible but did not succeed, which made it bored. It added itself
+						// to BoredProcesses, but then continued looking and found a cone it
+						// could have. This made it no longer a bored process.
+						if (j > (ProcessID + ProcessCount)) {
+							BPmtx.lock();
+							BoredProcesses[ProcessID] = 0;
+							BoredProcesses[ProcessCount] -= 1;
+							BPmtx.unlock();
+						};
+						break;
 					};
-					MyCones.push_back(SharedCones[i].back());
-					SharedCones[i].pop_back();
-					SCmtx.unlock();
-					BPmtx.lock();
-					BoredProcesses.erase(ProcessID);
-					BPmtx.unlock();
+				};
+				(*TJ).M.unlock();
+				if (HasCone) {
 					break;
 				};
-			};
-			if (MyCones.size() == 0) {
-				this_thread::sleep_for(chrono::milliseconds(100));
-				// check to see if we're done.
-				if (BoredProcesses.size() == ProcessCount) {
+				// This case means that we spun through all of the other threads' queues
+				// and they were all empty. Now we need to make the process bored.
+				if (j == ProcessCount + ProcessID) {
 					BPmtx.lock();
-					for (size_t i = 0; i != Pretropisms.size(); i++) {
-						GlobalPretropisms.push_back(Pretropisms[i]);
-					};
-					FinishedProcesses.insert(ProcessID);
+					BoredProcesses[ProcessID] = 0;
+					BoredProcesses[ProcessCount] += 1;
 					BPmtx.unlock();
-					return;
 				};
+				if ((j % ProcessCount) == ProcessID) {
+					if (BoredProcesses[ProcessCount] == ProcessCount) {
+						BPmtx.lock();
+						for (size_t i = 0; i != Pretropisms.size(); i++) {
+							GlobalPretropisms.push_back(Pretropisms[i]);
+						};
+						FinishedProcessCount++;
+						BPmtx.unlock();
+						return;
+					};
+				};
+				j++;
 			};
 		};
-		clock_t AA = clock();
-		vector<Cone> ResultCones = DynamicEnumerate(MyCones.back(), Hulls, Pretropisms);
-		TestTime += double(clock() - AA);
-		MyCones.pop_back();
-		while ((MyCones.size() < NumberOfConesToHoldOnto) && (ResultCones.size() > 0)) {
-			MyCones.push_back(ResultCones.back());
+		vector<Cone> ResultCones = DynamicEnumerate(C, Hulls, Pretropisms);
+		// If there is at least one cone, hold onto it for the next round.
+		if (ResultCones.size() > 0) {
+			C = ResultCones.back();
 			ResultCones.pop_back();
+		} else {
+			HasCone = false;
 		};
+		
+		// If there are remaining new cones, give them to the job queue.
 		if (ResultCones.size() > 0) {
 			int Index = -1;
 			for (size_t i = 0; i != ResultCones[0].PolytopesVisited.size(); i++) {
@@ -269,15 +273,13 @@ void ENUMERATETEST(vector<Hull> Hulls, int ProcessID, int ProcessCount) {
 					Index++;
 				};
 			};
+			
+			TJ = &ThreadJobs[ProcessID];
+			(*TJ).M.lock();
 			for (size_t i = 0; i != ResultCones.size(); i++) {
-				SCmtx.lock();
-				SharedCones[Index].push_back(ResultCones[i]);
-				SCmtx.unlock();
+				(*TJ).SharedCones[Index].push_back(ResultCones[i]);
 			};
-		} else {
-			BPmtx.lock();
-			BoredProcesses.insert(ProcessID);
-			BPmtx.unlock();
+			(*TJ).M.unlock();
 		};
 	};
 };
@@ -308,6 +310,7 @@ int main(int argc, char* argv[]) {
 	double RandomSeed = time(NULL);
 	cout <<fixed<< "Random seed value: " << RandomSeed << endl;
 	srand(RandomSeed);
+	
 	vector<Hull> Hulls;
 	vector<double> VectorForOrientation;
 	for (size_t i = 0; i != PolynomialSystemSupport[0][0].size(); i++) {
@@ -323,15 +326,10 @@ int main(int argc, char* argv[]) {
 
 	double PreintersectTime = 0;
 
-	for(size_t i = 0; i != Hulls.size(); i++) {
-		vector<vector<bool> > InitialSet1(Hulls.size());
-		for(size_t j = 0; j != Hulls.size(); j++) {
-			if (i == j) continue;
-			for(size_t k = 0; k != Hulls[j].Edges.size(); k++) {
-				InitialSet1[j].push_back(0);
-			};
-		};
-		for(int j = 0; j != Hulls[i].Edges.size(); j++){
+	for(size_t i = 0; i != Hulls.size(); i++){
+		for(size_t j = 0; j != Hulls[i].Edges.size(); j++){
+			vector<set<int> > InitialSet1 (Hulls.size());
+			vector<set<int> > InitialSet2 (Hulls.size());
 			Hulls[i].Edges[j].EdgeCone.ClosedIntersectionIndices = InitialSet1;
 		};
 	};
@@ -343,7 +341,7 @@ int main(int argc, char* argv[]) {
 		int ExpectedDim = Hulls[0].Edges[0].EdgeCone.ClosedPolyhedron.affine_dimension() - 1;
 		vector<Edge> Edges1 = Hulls[i].Edges;
 		for (int k = 0; k != Hulls[i].Edges.size(); k++) {
-			vector<int> VisitVector; // TODO: CLEAN UP!!
+			vector<int> VisitVector;
 			for (size_t l = 0; l != Hulls.size(); l++) {
 				VisitVector.push_back(0);
 			};
@@ -357,11 +355,11 @@ int main(int argc, char* argv[]) {
 				for(int l = 0; l != Edges2.size(); l++){
 					// Intersect pairs of closed cones. Osserman/Payne applies
 					if (IntersectCones(Edges1[k].EdgeCone.ClosedPolyhedron, Edges2[l].EdgeCone.ClosedPolyhedron).affine_dimension() >= ExpectedDim) {
-						Hulls[i].Edges[k].EdgeCone.ClosedIntersectionIndices[j][l] = 1;
-						Hulls[j].Edges[l].EdgeCone.ClosedIntersectionIndices[i][k] = 1;					
+						Hulls[i].Edges[k].EdgeCone.ClosedIntersectionIndices[j].insert(l);
+						Hulls[j].Edges[l].EdgeCone.ClosedIntersectionIndices[i].insert(k);					
 					} else if (IntersectCones(Edges1[k].EdgeCone.HOPolyhedron, Edges2[l].EdgeCone.HOPolyhedron).affine_dimension() >= 1) {
-						Hulls[i].Edges[k].EdgeCone.ClosedIntersectionIndices[j][l] = 1;
-						Hulls[j].Edges[l].EdgeCone.ClosedIntersectionIndices[i][k] = 1;
+						Hulls[i].Edges[k].EdgeCone.ClosedIntersectionIndices[j].insert(l);
+						Hulls[j].Edges[l].EdgeCone.ClosedIntersectionIndices[i].insert(k);
 					} else {
 						NonInt++;
 					};
@@ -375,33 +373,25 @@ int main(int argc, char* argv[]) {
 	cout << "Total Intersections: " << TotalInt << ", Non Intersections: " << NonInt << endl;
 	PreintersectTime = double(clock() - PreintTimeStart);
 	cout << "Preintersection time: " << PreintersectTime / CLOCKS_PER_SEC << endl;
-
+	
 	// This is one way to do it. It seems reasonable to pick sum, median, mean, min...
 	int SmallestInt = 1000000;
 	int SmallestIndex = -1;
 	for (size_t i = 0; i != Hulls.size(); i++) {
 		int TestValue = 0;
 		for (size_t j = 0; j != Hulls[i].Edges.size(); j++) {
-//			TestValue += CountVector(Hulls[i].Edges[j].EdgeCone.ClosedIntersectionIndices); TODO:BROKEN!!!
+			for (size_t k = 0; k != Hulls[i].Edges[j].EdgeCone.ClosedIntersectionIndices.size(); k++) {
+				TestValue += Hulls[i].Edges[j].EdgeCone.ClosedIntersectionIndices[k].size(); // BROKEN!!!
+			};
 		};
 		if (TestValue < SmallestInt) {
-			TestValue = SmallestInt;
+			SmallestInt = TestValue;
 			SmallestIndex = i;
 		};
 	};
-
 	if (SmallestIndex == -1) {
-		cout << "Internal error: found -1 for SmallestIndex" << endl;
+		cout << "Internal error: DynamicEnumerate had a value of -1 for SmallestIndex" << endl;
 		return 1;
-	};
-
-	for (size_t i = 0; i != Hulls.size() - 1; i++) {
-		vector<Cone> Temp;
-		SharedCones.push_back(Temp);
-	};
-	
-	for (size_t i = 0; i != Hulls[SmallestIndex].Edges.size(); i++) {
-		SharedCones[0].push_back(Hulls[SmallestIndex].Edges[i].EdgeCone);
 	};
 	
 	//Hulls[SmallestIndex].Edges[0].EdgeCone.HOPolyhedron = Hulls[SmallestIndex].Edges[0].EdgeCone.ClosedPolyhedron;
@@ -414,18 +404,36 @@ int main(int argc, char* argv[]) {
 		return 1;
 	};
 	
+	vector<ThreadJob> ThreadJobs;
+	for (size_t i = 0; i != TotalProcessCount; i++) {
+		vector<vector<Cone> > SharedCones;
+		for (size_t i = 0; i != Hulls.size() - 1; i++) {
+			vector<Cone> Temp;
+			SharedCones.push_back(Temp);
+		};
+		ThreadJob TJ(SharedCones);
+		ThreadJobs.push_back(TJ);
+	};
+	
+	for (size_t i = 0; i != Hulls[SmallestIndex].Edges.size(); i++) {
+		ThreadJobs[i % TotalProcessCount].SharedCones[0].push_back(Hulls[SmallestIndex].Edges[i].EdgeCone);
+	};
+	
+	vector<vector<int> > GlobalPretropisms;
+	vector<int> BoredProcesses (TotalProcessCount + 1, 0);
+	int FinishedProcessCount = 0;
 	clock_t AlgorithmStartTime = clock();
 	typedef function<void()> work_type;
 	Thread_Pool<work_type> thread_pool(TotalProcessCount);
 	// Submit all conversion tasks.
 	for (size_t i = 0; i != TotalProcessCount; i++) {
-		work_type work = bind(ENUMERATETEST, Hulls, i, TotalProcessCount);
+		work_type work = bind(ENUMERATETEST, Hulls, i, TotalProcessCount, ref(ThreadJobs), ref(BoredProcesses), ref(FinishedProcessCount), ref(GlobalPretropisms));
 		thread_pool.submit(make_threadable(work));
 	}
 	// Wait for all workers to complete.
 	thread_pool.finalize();
 	while (true) {
-		if (FinishedProcesses.size() == TotalProcessCount) {
+		if (FinishedProcessCount == TotalProcessCount) {
 			break;
 		} else {
 			this_thread::sleep_for(chrono::milliseconds(100));
