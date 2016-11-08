@@ -11,6 +11,7 @@ struct Cone {
 	NNC_Polyhedron ClosedPolyhedron;
 	vector<set<int> > ClosedIntersectionIndices; // 1 means that there is an intersection, 0 that there isn't
 	vector<int> PolytopesVisited; // 1 means visited, 0 means unvisited
+	vector<NNC_Polyhedron> ConeHistory;
 };
 
 struct Edge {
@@ -49,7 +50,15 @@ struct ThreadJob {
 //------------------------------------------------------------------------------
 inline NNC_Polyhedron IntersectCones(NNC_Polyhedron &ph1, NNC_Polyhedron &ph2) {
 	NNC_Polyhedron ph = ph1;
-	ph.add_constraints(ph2.minimized_constraints());
+	ph.add_constraints(ph2.constraints());
+	ph.affine_dimension();
+	return ph;
+};
+
+//------------------------------------------------------------------------------
+inline C_Polyhedron IntersectCones(C_Polyhedron &ph1, C_Polyhedron &ph2) {
+	C_Polyhedron ph = ph1;
+	ph.add_constraints(ph2.constraints());
 	ph.affine_dimension();
 	return ph;
 };
