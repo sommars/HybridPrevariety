@@ -179,9 +179,6 @@ Hull NewHull(vector<vector<int> > Points, vector<double> VectorForOrientation) {
 				};
 				//Introduce it as a strict inequality to describe the rest. Call recursively on this cone.
 				Cone NewCone;
-				for (size_t iii = 0; iii != H.Eqs.size(); iii++) {
-//					cs1.insert(H.Eqs[iii]);
-				};
 				NewCone.HOPolyhedron = NNC_Polyhedron(cs1);
 				HalfOpenCones.push_back(NewCone);
 				Constraints[j] = InequalityToStrictInequality(TempConstraint);
@@ -191,7 +188,8 @@ Hull NewHull(vector<vector<int> > Points, vector<double> VectorForOrientation) {
 	};
 	for (size_t i = 0; i != HalfOpenCones.size(); i++) {
 		for (size_t j = i+1; j != HalfOpenCones.size(); j++) {
-			if (!HalfOpenCones[i].HOPolyhedron.is_disjoint_from(HalfOpenCones[j].HOPolyhedron)) {
+//			if (!HalfOpenCones[i].HOPolyhedron.is_disjoint_from(HalfOpenCones[j].HOPolyhedron)) {
+			if (IntersectCones(HalfOpenCones[i].HOPolyhedron,HalfOpenCones[j].HOPolyhedron).affine_dimension() > 0) {
 				cout << "Internal Error: Two half open cones from the same polytope are not disjoint." << endl;
 				cin.get();
 			};
