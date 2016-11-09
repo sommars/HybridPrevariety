@@ -37,6 +37,28 @@ struct Hull {
 	vector<Constraint> Eqs;
 };
 
+struct ConeWithIndicator {
+	vector<int> RayIndices;
+	bool IsMaximal;
+};
+
+inline bool operator== (const ConeWithIndicator & s1, const ConeWithIndicator & s2)
+{
+    return  s1.RayIndices == s2.RayIndices;
+}
+
+inline bool operator< (const ConeWithIndicator & s1, const ConeWithIndicator & s2)
+{
+    return  s1.RayIndices < s2.RayIndices;
+}
+
+struct TropicalPrevariety {
+	map<vector<int>, int> RayToIndexMap;
+	vector<set<ConeWithIndicator > > ConeTree;
+	vector<vector<int> > Pretropisms; // Consider ripping out
+	vector<int> FVector; // Consider ripping out
+};
+
 struct ThreadJob {
 	mutable mutex M;
 	vector<vector<Cone> > SharedCones;
