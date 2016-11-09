@@ -154,7 +154,49 @@ inline vector<Cone> DynamicEnumerate(Cone &C, vector<Hull> &Hulls) {
 };
 
 //------------------------------------------------------------------------------
-void ENUMERATETEST(vector<Hull> Hulls, int ProcessID, int ProcessCount, vector<ThreadJob> &ThreadJobs, vector<int> &BoredProcesses, vector<Cone> &PreTropicalPrevariety, mutex &BPmtx) {
+void ParseToPrevariety(vector<int> &ConeRayIndices, int ConeDim, TropicalPrevariety &Output, bool CouldBeMaximal) {
+	if (ConeDim == ConeRayIndices.size()) {
+		// This is the easy case. We can recurse exactly as we would want to.
+		while (Output.ConeTree.size() < ConeDim) {
+			set<ConeWithIndicator > Temp;
+			Output.ConeTree.push_back(Temp);
+			Output.FVector.push_back(0);
+		};
+		ConeWithIndicator CWI;
+		CWI.IsMaximal = CouldBeMaximal;
+		CWI.RayIndices = ConeRayIndices;
+		set<ConeWithIndicator>::iterator CWIIt = find(Output.ConeTree[ConeDim - 1].begin(), Output.ConeTree[ConeDim - 1].end(), CWI);
+		if (CWIIt == Output.ConeTree[ConeDim - 1].end()) {
+			Output.ConeTree[ConeDim - 1].insert(CWI);
+			
+			if (ConeDim == 1)
+				return;	
+			for (size_t i = 0; i != ConeRayIndices.size(); i++) {
+				// There has to be a better way to do this...
+				vector<int> ToRecurse;
+				for (size_t j = 0; j != ConeRayIndices.size(); j++) {
+					if (i != j)
+						ToRecurse.push_back(ConeRayIndices[j]);
+				};
+				ParseToPrevariety(ToRecurse, ConeDim - 1, Output, false);
+			};
+		} else {
+			if ((*CWIIt).IsMaximal) {
+				ConeWithIndicator CWITemp;
+				CWITemp.RayIndices = ConeRayIndices;
+				CWITemp.IsMaximal = false;
+				Output.ConeTree[ConeDim - 1].erase(*CWIIt);
+				Output.ConeTree[ConeDim - 1].insert(CWITemp);
+			};
+			return;
+		}
+	} else {
+		// TODO!!
+	};
+};
+
+//------------------------------------------------------------------------------
+void ENUMERATETEST(vector<Hull> Hulls, int ProcessID, int ProcessCount, vector<ThreadJob> &ThreadJobs, vector<int> &BoredProcesses, TropicalPrevariety &Output, mutex &BPmtx, mutex &Outputmtx) {
 	vector<vector<int> > Pretropisms;
 	Cone C;
 	bool HasCone = false;
@@ -209,25 +251,30 @@ void ENUMERATETEST(vector<Hull> Hulls, int ProcessID, int ProcessCount, vector<T
 					Index++;
 			};
 			if (Index == Hulls.size() - 1) {
-				// convert them to C_Polyhedron
-				// Might go back to this eventually....
-				vector<C_Polyhedron> PrevarietyCones;
+				Outputmtx.lock();
 				for (size_t i = 0; i != ResultCones.size(); i++) {
+					vector<int> ConeRayIndices;
+					int ConeDim = ResultCones[i].HOPolyhedron.affine_dimension();
 					Generator_System gs = ResultCones[i].HOPolyhedron.generators();
-					Generator_System NewGS;
-					NewGS.insert(point(Linear_Expression(0)));
 					for (Generator_System::const_iterator gsi = gs.begin(), gs_end = gs.end(); gsi != gs_end; ++gsi) {
 						if ((*gsi).is_point() or (*gsi).is_closure_point())
 							continue;
-						NewGS.insert(*gsi);
+						vector<int> Ray = GeneratorToPoint(*gsi);
+						map<vector<int>, int>::iterator GSIt;
+						GSIt = Output.RayToIndexMap.find(Ray);
+						if (GSIt == Output.RayToIndexMap.end()) {
+							int NewIndex = Output.RayToIndexMap.size();
+							ConeRayIndices.push_back(NewIndex);
+							Output.RayToIndexMap[Ray] = NewIndex;
+							Output.Pretropisms.push_back(Ray);
+						} else {
+							ConeRayIndices.push_back((*GSIt).second);
+						};
 					};
-					PrevarietyCones.push_back(C_Polyhedron(NewGS));
+					sort(ConeRayIndices.begin(), ConeRayIndices.end());
+					ParseToPrevariety(ConeRayIndices, ConeDim, Output, true);
 				};
-				BPmtx.lock();
-				
-				for (size_t i = 0; i != ResultCones.size(); i++)
-					PreTropicalPrevariety.push_back(ResultCones[i]);
-				BPmtx.unlock();
+				Outputmtx.unlock();
 				HasCone = false;
 			} else {
 				// If there is at least one cone, hold onto it for the next round.
@@ -382,18 +429,19 @@ int main(int argc, char* argv[]) {
 	};
 	
 	mutex BPmtx;
-	vector<Cone> PreTropicalPrevariety;
-	vector<vector<int> > GlobalPretropisms;
+	mutex Outputmtx;
+	TropicalPrevariety Output;
 	vector<int> BoredProcesses (TotalProcessCount + 1, 0);
 	clock_t AlgorithmStartTime = clock();
 	typedef function<void()> work_type;
 	Thread_Pool<work_type> thread_pool(TotalProcessCount);
 	for (size_t i = 0; i != TotalProcessCount; i++) {
-		work_type work = bind(ENUMERATETEST, Hulls, i, TotalProcessCount, ref(ThreadJobs), ref(BoredProcesses), ref(PreTropicalPrevariety), ref(BPmtx));
+		work_type work = bind(ENUMERATETEST, Hulls, i, TotalProcessCount, ref(ThreadJobs), ref(BoredProcesses), ref(Output), ref(BPmtx), ref(Outputmtx));
 		thread_pool.submit(make_threadable(work));
 	}
 	// Wait for all workers to complete.
 	thread_pool.finalize();
+	
 	while (true) {
 		if (BoredProcesses[TotalProcessCount] == TotalProcessCount)
 			break;
@@ -401,69 +449,25 @@ int main(int argc, char* argv[]) {
 			this_thread::sleep_for(chrono::milliseconds(100));
 	};
 	
-
-	for (size_t i = 0; i != PreTropicalPrevariety.size(); i++) {
-		cout << PreTropicalPrevariety[i].HOPolyhedron.affine_dimension() << endl;
-		cout << PreTropicalPrevariety[i].HOPolyhedron.generators() << endl << endl;
-	};
-
-	
-	clock_t CleanupStart = clock();
-	cout << "Starting cleanup: " << double(clock() - AlgorithmStartTime) / CLOCKS_PER_SEC << endl;
-	vector<NNC_Polyhedron> TropicalPrevariety;
-	vector<int> SupersededCones (PreTropicalPrevariety.size(), 0);
-	NNC_Polyhedron *C1;
-	vector<int> MaximalConeCount;
-	sort(PreTropicalPrevariety.begin(), PreTropicalPrevariety.end(), c_poly_compare);
-	for (size_t i = 0; i != PreTropicalPrevariety.size(); i++) {
-		bool AddCone = true;
-		C1 = &(PreTropicalPrevariety[i]).HOPolyhedron;
-		for (size_t j = 0; j != PreTropicalPrevariety.size(); j++) {
-			if ((i == j) 
-			|| (SupersededCones[i] == 1)
-			|| ((*C1).affine_dimension() > PreTropicalPrevariety[j].HOPolyhedron.affine_dimension()))
-				continue;
-			if (PreTropicalPrevariety[j].HOPolyhedron.contains(*C1)) {
-				AddCone = false;
-				SupersededCones[i] = 1;
-				break;
-			};
-		};
-		if (AddCone == true) {
-			TropicalPrevariety.push_back(*C1);
-			for (Generator_System::const_iterator g = 
-			(*C1).minimized_generators().begin(), gs_end = 
-			(*C1).minimized_generators().end(); g != gs_end; ++g) {
-				if ((*g).is_point()) 
-					continue;
-				vector<int> Pretropism = GeneratorToPoint(*g);
-				if (find(GlobalPretropisms.begin(), GlobalPretropisms.end(), Pretropism) == GlobalPretropisms.end())
-					GlobalPretropisms.push_back(Pretropism);
-			};
-			int Dim = (*C1).affine_dimension();
-			while (Dim > MaximalConeCount.size()) {
-				MaximalConeCount.push_back(0);
-			};
-			MaximalConeCount[Dim - 1] += 1;
+	for (size_t i = 0; i != Output.ConeTree.size(); i++) {
+		
+		set<ConeWithIndicator>::iterator CWIIt;
+		for (CWIIt=Output.ConeTree[i].begin(); CWIIt != Output.ConeTree[i].end(); CWIIt++) {
+			if ((*CWIIt).IsMaximal)
+				Output.FVector[i]++;
 		};
 	};
-	for (size_t i = 0; i != TropicalPrevariety.size(); i++) {
-		cout << TropicalPrevariety[i].affine_dimension() << endl;
-		cout << TropicalPrevariety[i].minimized_generators() << endl;
-	};
-	
-	double TimeAfterInit = double(clock() - AlgorithmStartTime);
-	sort(GlobalPretropisms.begin(), GlobalPretropisms.end());
-	PrintPoints(GlobalPretropisms);
+	sort(Output.Pretropisms.begin(), Output.Pretropisms.end());
+	PrintPoints(Output.Pretropisms);
 	cout << "Maximal cone count--------" << endl;
-	PrintPoint(MaximalConeCount);
-	cout << "Number of pretropisms found: " << GlobalPretropisms.size() << endl;
-	cout << "Cleanup time: " << double(clock() - CleanupStart) / CLOCKS_PER_SEC << endl;
+	PrintPoint(Output.FVector);
+	cout << "Number of pretropisms found: " << Output.Pretropisms.size() << endl;
+//	cout << "Cleanup time: " << double(clock() - CleanupStart) / CLOCKS_PER_SEC << endl;
 	cout << "Hull time: " << HullTime / CLOCKS_PER_SEC << endl;
 	cout << "Intersection time: " << IntersectionTime / CLOCKS_PER_SEC << endl;
 	cout << "Preintersection time: " << PreintersectTime / CLOCKS_PER_SEC << endl;
 	cout << "Test time: " << TestTime / CLOCKS_PER_SEC << endl;
-	cout << "Time after init: " << TimeAfterInit / CLOCKS_PER_SEC << endl;
+//	cout << "Time after init: " << TimeAfterInit / CLOCKS_PER_SEC << endl;
 	cout << "Number of intersections: " << ConeIntersectionCount << endl;
 
 }
