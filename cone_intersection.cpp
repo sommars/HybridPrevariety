@@ -33,38 +33,8 @@ inline vector<Cone> WalkPolytope(int HullIndex, Cone &NewCone, vector<Hull> &Hul
 	HIndex = &Hulls[HullIndex];
 	set<int> *ClosedIntersectionIndices = &NewCone.ClosedIntersectionIndices[HullIndex];
 	//take a random vector from half open cone
-	vector<int> RandomVector(Hulls[0].SpaceDimension, 0);
-	for (Generator_System::const_iterator i = 
-	NewCone.HOPolyhedron.generators().begin(), gs_end = 
-	NewCone.HOPolyhedron.generators().end(); i != gs_end; ++i) {
-		if (!(*i).is_ray()) {
-			continue;
-		};
-		for (size_t j = 0; j != Hulls[0].SpaceDimension; j++) {
-			stringstream s;
-			s << (*i).coefficient(Variable(j));
-			int ToAppend;
-			istringstream(s.str()) >> ToAppend;
-			RandomVector[j] += ToAppend;
-		};
-	};
-	//take initial form using that vector.
-	vector<vector<int> > InitialForm = FindInitialForm((*HIndex).Points, RandomVector);
-
-	set<int> InitialIndices;
-	for (vector<vector<int> >::iterator InitialFormItr=InitialForm.begin();
-	InitialFormItr != InitialForm.end(); InitialFormItr++) {
-		InitialIndices.insert((*HIndex).PointToIndexMap[*InitialFormItr]);
-	};
-
 	// List of indices of edges to visit.
-	set<int> EdgesToTest;
-	for(size_t EdgeIndex = 0; EdgeIndex != (*HIndex).Edges.size(); EdgeIndex++) {
-		if (SetsDoIntersect(InitialIndices, (*HIndex).Edges[EdgeIndex].PointIndices)
-		&& (find((*ClosedIntersectionIndices).begin(), (*ClosedIntersectionIndices).end(), EdgeIndex) != (*ClosedIntersectionIndices).end()))
-			EdgesToTest.insert(EdgeIndex);
-	};
-	
+	set<int> EdgesToTest = *ClosedIntersectionIndices;
 	vector<Cone> NewCones;
 	// Explore edge skeleton
 	set<int> PretropGraphEdges;
@@ -79,53 +49,25 @@ inline vector<Cone> WalkPolytope(int HullIndex, Cone &NewCone, vector<Hull> &Hul
 		EdgeToTest = &(*HIndex).Edges[EdgeToTestIndex];
 
 		Cone TempCone;
-		TempCone.ClosedPolyhedron = (*EdgeToTest).EdgeCone.ClosedPolyhedron;
+		TempCone.HOPolyhedron = (*EdgeToTest).EdgeCone.HOPolyhedron;
 
-		TempCone.ClosedPolyhedron.add_constraints(NewCone.HOPolyhedron.constraints());
-		TempCone.ClosedPolyhedron.affine_dimension();
+		TempCone.HOPolyhedron.add_constraints(NewCone.HOPolyhedron.constraints());
+		TempCone.HOPolyhedron.affine_dimension();
 		ConeIntersectionCount++;
 		IntersectionTime += double(clock() - IntBegin);
-		if (TempCone.ClosedPolyhedron.affine_dimension() > 0) {
+		if (TempCone.HOPolyhedron.affine_dimension() > 0) {
 			PretropGraphEdges.insert(EdgeToTestIndex);
-
-			clock_t IntBegin = clock();
-			TempCone.HOPolyhedron = (*EdgeToTest).EdgeCone.HOPolyhedron;
-			TempCone.HOPolyhedron.add_constraints(NewCone.HOPolyhedron.constraints());
-
-			TempCone.HOPolyhedron.affine_dimension();
-			ConeIntersectionCount++;
-			IntersectionTime += double(clock() - IntBegin);
-
-
-			if (TempCone.HOPolyhedron.affine_dimension() > 0) {
-				clock_t IntBegin = clock();
-				IntersectionTime += double(clock() - IntBegin);
-				
-				vector<set<int> > InitialSet1 (NewCone.ClosedIntersectionIndices.size());
-				TempCone.ClosedIntersectionIndices = InitialSet1;
-				for (size_t i = 0; i != NewCone.ClosedIntersectionIndices.size(); i++) {
-					if (NewCone.PolytopesVisited[i] == 0)
-						TempCone.ClosedIntersectionIndices[i] = IntersectSets((*EdgeToTest).EdgeCone.ClosedIntersectionIndices[i], NewCone.ClosedIntersectionIndices[i]);
-				};
-				TempCone.ConeHistory = NewCone.ConeHistory;
-				TempCone.ConeHistory.push_back((*EdgeToTest).EdgeCone.HOPolyhedron);
-				NewCones.push_back(TempCone);
+			
+			vector<set<int> > InitialSet1 (NewCone.ClosedIntersectionIndices.size());
+			TempCone.ClosedIntersectionIndices = InitialSet1;
+			for (size_t i = 0; i != NewCone.ClosedIntersectionIndices.size(); i++) {
+			//	if (NewCone.PolytopesVisited[i] == 0)
+					TempCone.ClosedIntersectionIndices[i] = IntersectSets((*EdgeToTest).EdgeCone.ClosedIntersectionIndices[i], NewCone.ClosedIntersectionIndices[i]);
 			};
-			set<int>::iterator NeighborItr;
-			for(NeighborItr=(*EdgeToTest).NeighborIndices.begin(); NeighborItr!=(*EdgeToTest).NeighborIndices.end(); NeighborItr++) {
-				int Neighbor = *NeighborItr;
-				if (( find((*ClosedIntersectionIndices).begin(), (*ClosedIntersectionIndices).end(), Neighbor) != (*ClosedIntersectionIndices).end())
-				&& ( find(PretropGraphEdges.begin(), PretropGraphEdges.end(), Neighbor) == PretropGraphEdges.end() )
-				&& ( find(NotPretropGraphEdges.begin(), NotPretropGraphEdges.end(), Neighbor) == NotPretropGraphEdges.end() )
-				&& ( find(EdgesToTest.begin(), EdgesToTest.end(), Neighbor) == EdgesToTest.end() )) {
-					EdgesToTest.insert(Neighbor);
-				};
-			};
-		} else {
-			NotPretropGraphEdges.insert(EdgeToTestIndex);
+			NewCones.push_back(TempCone);
 		};
-
 	};
+	
 	return NewCones;
 }
 
@@ -141,28 +83,40 @@ inline vector<Cone> DynamicEnumerate(Cone &C, vector<Hull> &Hulls) {
 			SmallestIndex = i;
 		};
 	};
+	for (size_t i = 0; i != C.PolytopesVisited.size(); i++) {
+		if (C.PolytopesVisited[i] == 0) {
+			SmallestIndex = i;
+			break;
+		}
+	};
+
 	if (SmallestIndex == -1) {
 		cout << "Internal error: DynamicEnumerate had a value of -1 for SmallestIndex" << endl;
 		cin.get();
 	};
 	C.PolytopesVisited[SmallestIndex] = 1;
+	C.PolytopesVisitedCount++;
 	vector<Cone> ResultCones = WalkPolytope(SmallestIndex, C, Hulls);
 
-	for (size_t i = 0; i != ResultCones.size(); i++)
+	for (size_t i = 0; i != ResultCones.size(); i++) {
 		ResultCones[i].PolytopesVisited = C.PolytopesVisited;
+		ResultCones[i].PolytopesVisitedCount = C.PolytopesVisitedCount;
+	};
 	return ResultCones;
 };
 
 //------------------------------------------------------------------------------
 void ParseToPrevariety(vector<int> &ConeRayIndices, int ConeDim, TropicalPrevariety &Output, bool CouldBeMaximal) {
 	while (Output.ConeTree.size() < ConeDim) {
-		set<ConeWithIndicator > Temp;
+		set<ConeWithIndicator> Temp;
 		Output.ConeTree.push_back(Temp);
 		Output.FVector.push_back(0);
 	};
+
 	ConeWithIndicator CWI;
 	CWI.IsMaximal = CouldBeMaximal;
 	CWI.RayIndices = ConeRayIndices;
+
 	set<ConeWithIndicator>::iterator CWIIt = find(Output.ConeTree[ConeDim - 1].begin(), Output.ConeTree[ConeDim - 1].end(), CWI);
 	if (CWIIt == Output.ConeTree[ConeDim - 1].end()) {
 		Output.ConeTree[ConeDim - 1].insert(CWI);
@@ -176,12 +130,11 @@ void ParseToPrevariety(vector<int> &ConeRayIndices, int ConeDim, TropicalPrevari
 		};
 		if (ConeDim == 3) {
 		
-		cout << "AAA" << endl;
-		PrintPoint(ConeRayIndices);
+	//	cout << "AAA" << endl;
+	//	PrintPoint(ConeRayIndices);
 };
 		return;
 	};
-	
 	if (ConeDim == ConeRayIndices.size()) {
 		// This is the easy case. We can recurse exactly as we would want to.
 		if (CWIIt == Output.ConeTree[ConeDim - 1].end()) {
@@ -197,7 +150,7 @@ void ParseToPrevariety(vector<int> &ConeRayIndices, int ConeDim, TropicalPrevari
 			};
 		}
 	} else {
-		vector<Generator> Gens;
+/*		vector<Generator> Gens;
 		Generator_System gs;
 		for (size_t i = 0; i != ConeRayIndices.size(); i++) {
 			Gens.push_back(Output.IndexToGenMap[ConeRayIndices[i]]);
@@ -221,7 +174,6 @@ void ParseToPrevariety(vector<int> &ConeRayIndices, int ConeDim, TropicalPrevari
 				Inequalities.push_back(*i);
 			};
 		};
-//		cout << "System " << InitialPoly.generators();
 		for (size_t i = 0; i != Inequalities.size(); i++) {
 			Constraint_System cs = Equalities;
 			for (size_t j = 0; j != Inequalities.size(); j++) {
@@ -229,16 +181,16 @@ void ParseToPrevariety(vector<int> &ConeRayIndices, int ConeDim, TropicalPrevari
 					cs.insert(Inequalities[j]);
 			};
 			NNC_Polyhedron TempPoly(cs);
-//			cout << "TEST " << TempPoly.generators();
 			vector<int> TempConeRayIndices;
 			for (Generator_System::const_iterator gsi = TempPoly.generators().begin(), gs_end = TempPoly.generators().end(); gsi != gs_end; ++gsi) {
 				if ((*gsi).is_point() or (*gsi).is_closure_point())
 					continue;
+				// TODO!!!! If a value isn't defined, the map outputs 0 instead of throwing an error!
 				TempConeRayIndices.push_back(Output.RayToIndexMap[GeneratorToPoint(*gsi)]);
 			};
 			sort(TempConeRayIndices.begin(), TempConeRayIndices.end());
 			ParseToPrevariety(TempConeRayIndices, TempPoly.affine_dimension(), Output, false);
-		};
+		};*/
 	};
 };
 
@@ -253,6 +205,8 @@ void ENUMERATETEST(vector<Hull> Hulls, int ProcessID, int ProcessCount, vector<T
 		while (not HasCone) {
 			TJ = &ThreadJobs[j % ProcessCount];
 			(*TJ).M.lock();
+			// If work stealing happens, we really want to steal the less traveled cones,
+			// not the more traveled cones. Need to rework that...somehow.
 			for (size_t i = (*TJ).SharedCones.size() - 1; i !=-1; i--) {
 				if ((*TJ).SharedCones[i].size() > 0) {
 					C = (*TJ).SharedCones[i].back();
@@ -297,37 +251,47 @@ void ENUMERATETEST(vector<Hull> Hulls, int ProcessID, int ProcessCount, vector<T
 				if (ResultCones[0].PolytopesVisited[i] == 1)
 					Index++;
 			};
-			if (Index == Hulls.size() - 1) {
+			if (ResultCones[0].PolytopesVisitedCount == Hulls.size() - 1) {
 				Outputmtx.lock();
 				clock_t TimeStart = clock();
 				for (size_t i = 0; i != ResultCones.size(); i++) {
 					vector<int> ConeRayIndices;
 					int ConeDim = ResultCones[i].HOPolyhedron.affine_dimension();
-					Generator_System gs = ResultCones[i].HOPolyhedron.generators();
-					for (Generator_System::const_iterator gsi = gs.begin(), gs_end = gs.end(); gsi != gs_end; ++gsi) {
+					Generator_System pregs = ResultCones[i].HOPolyhedron.generators();
+					Generator_System gs;
+					gs.insert(point(Variable(0)*0));
+					for (Generator_System::const_iterator gsi = pregs.begin(), gs_end = pregs.end(); gsi != gs_end; ++gsi) {
 						if ((*gsi).is_point() or (*gsi).is_closure_point())
 							continue;
+						gs.insert(*gsi);
+					};
+					gs = NNC_Polyhedron(gs).minimized_generators();
+					for (Generator_System::const_iterator gsi = gs.begin(), gs_end = gs.end(); gsi != gs_end; ++gsi) {
+						if ((*gsi).is_point() or (*gsi).is_closure_point() or (*gsi).is_line())
+							continue;							
 						vector<int> Ray = GeneratorToPoint(*gsi);
 						map<vector<int>, int>::iterator GSIt;
 						GSIt = Output.RayToIndexMap.find(Ray);
 						if (GSIt == Output.RayToIndexMap.end()) {
-							int NewIndex = Output.RayToIndexMap.size();
+							int NewIndex = Output.Pretropisms.size();
 							ConeRayIndices.push_back(NewIndex);
 							Output.RayToIndexMap[Ray] = NewIndex;
 							Output.IndexToGenMap[NewIndex] = (*gsi);
 							Output.Pretropisms.push_back(Ray);
+							cout << (*gsi) << endl;
 						} else {
 							ConeRayIndices.push_back((*GSIt).second);
 						};
 					};
 					sort(ConeRayIndices.begin(), ConeRayIndices.end());
 					
-										if (ResultCones[i].HOPolyhedron.affine_dimension() == 3) {
-					cout << ResultCones[i].HOPolyhedron.affine_dimension() << endl;
-					cout << ResultCones[i].HOPolyhedron.generators() << endl;
-					cout << ResultCones[i].HOPolyhedron.constraints() << endl << endl;
-					PrintPoint(ConeRayIndices);
-};
+/*					if (ResultCones[i].ClosedPolyhedron.affine_dimension() == 3) {
+						cout << ResultCones[i].ClosedPolyhedron.affine_dimension() << endl;
+						cout << ResultCones[i].ClosedPolyhedron.generators() << endl;
+						cout << ResultCones[i].ClosedPolyhedron.constraints() << endl << endl;
+						PrintPoint(ConeRayIndices);
+					};
+*/
 					ParseToPrevariety(ConeRayIndices, ConeDim, Output, true);
 				};
 				CleanupTime += double(clock() - TimeStart);
@@ -376,7 +340,7 @@ int main(int argc, char* argv[]) {
 	
 	double RandomSeed = time(NULL);
 	cout <<fixed<< "Random seed value: " << RandomSeed << endl;
-//	RandomSeed =  1478813622.000000; // Reducedcyclicn 8 weird f vector?
+//	RandomSeed = 1479237790.000000; // FAVORITE 1479237711.000000; // 1478813622.000000 ALSO 1479237711.000000 ALSO 1479237790.000000 Reducedcyclicn 8 weird f vector? // 1477423487.000000 Reducedcyclicn 9 wrong # pretrop (seems to work now!)
 	srand(RandomSeed);
 	
 	vector<Hull> Hulls;
@@ -386,9 +350,9 @@ int main(int argc, char* argv[]) {
 		VectorForOrientation.push_back(dd);
 	};
 	
-	for (size_t i = 0; i != PolynomialSystemSupport.size(); i++)
+	for (size_t i = 0; i != PolynomialSystemSupport.size(); i++) {
 		Hulls.push_back(NewHull(PolynomialSystemSupport[i], VectorForOrientation));
-	
+	}
 	double HullTime = double(clock() - StartTime);
 
 	double PreintersectTime = 0;
@@ -400,37 +364,32 @@ int main(int argc, char* argv[]) {
 			Hulls[i].Edges[j].EdgeCone.ClosedIntersectionIndices = InitialSet1;
 		};
 	};
+	
 	clock_t PreintTimeStart = clock();
 	int TotalInt = 0;
 	int NonInt = 0;
 	// TODO: parallelize this.
 	for(int i = 0; i != Hulls.size(); i++){
-		int ExpectedDim = Hulls[0].Edges[0].EdgeCone.ClosedPolyhedron.affine_dimension() - 1;
 		vector<Edge> Edges1 = Hulls[i].Edges;
 		for (size_t k = 0; k != Hulls[i].Edges.size(); k++) {
 			for (size_t l = 0; l != Hulls.size(); l++)
 				Hulls[i].Edges[k].EdgeCone.PolytopesVisited.push_back(0);
 			Hulls[i].Edges[k].EdgeCone.PolytopesVisited[i] = 1;
+			Hulls[i].Edges[k].EdgeCone.PolytopesVisitedCount = 0;
 		};
 
 		for(size_t j = i+1; j != Hulls.size(); j++){
 			vector<Edge> Edges2 = Hulls[j].Edges;
 			for(size_t k = 0; k != Edges1.size(); k++){
 				for(size_t l = 0; l != Edges2.size(); l++){
-					if (IntersectCones(Edges1[k].EdgeCone.ClosedPolyhedron, Edges2[l].EdgeCone.ClosedPolyhedron).affine_dimension() >= ExpectedDim) {
-						// Intersect pairs of closed cones. Osserman/Payne applies
-						Hulls[i].Edges[k].EdgeCone.ClosedIntersectionIndices[j].insert(l);
-						Hulls[j].Edges[l].EdgeCone.ClosedIntersectionIndices[i].insert(k);
-						TotalInt++;
-					} else if (IntersectCones(Edges1[k].EdgeCone.HOPolyhedron, Edges2[l].EdgeCone.HOPolyhedron).affine_dimension() >= 1) {
+					if (IntersectCones(Edges1[k].EdgeCone.HOPolyhedron, Edges2[l].EdgeCone.HOPolyhedron).affine_dimension() >= 1) {
+//if (true) {
 						// Intersect pairs of half open cones. Osserman/Payne does not apply.
 						Hulls[i].Edges[k].EdgeCone.ClosedIntersectionIndices[j].insert(l);
 						Hulls[j].Edges[l].EdgeCone.ClosedIntersectionIndices[i].insert(k);
 						TotalInt++;
-						TotalInt++;
 					} else {
 						NonInt++;
-						TotalInt++;
 						TotalInt++;
 					};
 				};
@@ -441,6 +400,289 @@ int main(int argc, char* argv[]) {
 	cout << "Total Intersections: " << TotalInt << ", Non Intersections: " << NonInt << endl;
 	PreintersectTime = double(clock() - PreintTimeStart);
 	cout << "Preintersection time: " << PreintersectTime / CLOCKS_PER_SEC << endl;
+	
+	
+	
+	
+/*
+	Constraint_System cz;
+	cz.insert(Variable(2) - Variable(6) == 0);
+	cz.insert(Variable(1) - Variable(5) == 0);
+	cz.insert(Variable(0) - Variable(4) == 0);
+	cz.insert(Variable(3) == 0);
+	cz.insert(-1*Variable(0) > 0);
+	cz.insert(Variable(0) - Variable(2) > 0);
+	cz.insert(-1*Variable(1) + Variable(2) > 0);
+	
+	
+	NNC_Polyhedron JEFF(cz);
+	
+//THIS ONE!C - G = 0, B - F = 0, A - E = 0, D = 0, -A > 0, A - C > 0, -B + C > 0
+//C - G = 0, B - F = 0, A - E = 0, D = 0, B - C > 0, A >= 0, -B > 0
+
+	
+	
+	
+	vector<Cone> ConeVector;
+	
+	
+		// Start by initializing the objects.
+	vector<vector<Cone> > Cones;
+	int HullIndex = 0;
+	vector<Hull>::iterator it;
+	for (it=Hulls.begin(); it != Hulls.end(); it++) {
+		vector<Edge> Edges = (*it).Edges;
+		vector<Cone> HullCones;
+		vector<Edge>::iterator itr;
+		for (itr=Edges.begin(); itr != Edges.end(); itr++) {
+			HullCones.push_back((*itr).EdgeCone);
+		};
+	
+		if (HullIndex == 0) {
+			ConeVector = HullCones;
+		} else {
+			Cones.push_back(HullCones);
+		};			
+		HullIndex++;
+	};
+	cout << "ConeVector count: " << ConeVector.size() << endl;
+	cout << "Cones count: " << Cones.size() << endl;
+	
+	//Iterate through Cones
+	vector<vector<Cone> >::iterator ConesItr;
+	int TreeLevel = 1;
+	for (size_t i = 0; i != Cones.size(); i++) {
+		cout << "Level " << i << endl;
+		vector<Cone> ResultCones;
+		for (size_t j = 0; j != ConeVector.size(); j++) {
+			vector<Cone> Temp = WalkPolytope(i+1, ConeVector[j], Hulls);
+			for (size_t k = 0; k != Temp.size(); k++) {
+				ResultCones.push_back(Temp[k]);
+			};
+		};
+		ConeVector = ResultCones;
+	};
+
+	int ThreeCount = 0;
+	vector<Cone> TestCones;
+	vector<int> OutVec;
+	for (size_t i = 0; i != ConeVector.size(); i++) {
+		int Dim = ConeVector[i].HOPolyhedron.affine_dimension();
+		while (OutVec.size() <= Dim) {
+			OutVec.push_back(0);
+		};
+		OutVec[Dim] += 1;
+		
+	};
+	cout << "THREECOUNT " << ThreeCount << endl;
+	PrintPoint(OutVec);
+	cin.get();
+	
+
+
+	int SmallestInta = 1000000;
+	int SmallestIndexa = -1;
+	for (size_t i = 0; i != Hulls.size(); i++) {
+		int TestValue = 0;
+		for (size_t j = 0; j != Hulls[i].Edges.size(); j++) {
+			for (size_t k = 0; k != Hulls[i].Edges[j].EdgeCone.ClosedIntersectionIndices.size(); k++) {
+				TestValue += Hulls[i].Edges[j].EdgeCone.ClosedIntersectionIndices[k].size();
+			};
+		};
+		if (TestValue < SmallestInta) {
+			SmallestInta = TestValue;
+			SmallestIndexa = i;
+		};
+	};
+	if (SmallestIndexa == -1) {
+		cout << "Internal error: value of -1 for SmallestIndex" << endl;
+		return 1;
+	};
+*/	
+
+
+
+/*
+	vector<Cone> StartCones;
+	for (size_t i = 0; i != Hulls[SmallestIndexa].Edges.size(); i++) {
+		StartCones.push_back(Hulls[SmallestIndexa].Edges[i].EdgeCone);
+	};
+
+	for (size_t i = 0; i != Hulls.size() - 1; i++) {
+		vector<Cone> TempCones;
+		for(size_t j = 0; j != StartCones.size(); j++) {
+			bool THISONE = (IntersectCones(JEFF, StartCones[j].HOPolyhedron).affine_dimension() > 0);
+			if (THISONE) {
+				cout << StartCones[j].ClosedPolyhedron.minimized_constraints() << endl;
+				cout << StartCones[j].HOPolyhedron.minimized_constraints() << endl;
+				
+				
+				PrintPoint(StartCones[j].PolytopesVisited);
+				for(size_t as = 0; as != StartCones[j].ClosedIntersectionIndices.size(); as++)
+					PrintPoint(StartCones[j].ClosedIntersectionIndices[as]);
+				cout << "AAAA " << j << endl;
+				cout << StartCones[j].HOPolyhedron.minimized_generators() << endl;
+			};
+			vector<Cone> OutputCones = DynamicEnumerate(StartCones[j], Hulls);
+			if (THISONE) {
+			cout << OutputCones.size() << endl;
+			for (size_t qq = 0; qq != OutputCones.size(); qq++) {
+				cout << OutputCones[qq].ClosedPolyhedron.affine_dimension() << endl;
+				cout << OutputCones[qq].ClosedPolyhedron.minimized_constraints() << endl;
+			};
+			
+			cout << endl;
+			cin.get();
+			};
+			for (size_t k = 0; k != OutputCones.size(); k++)
+				TempCones.push_back(OutputCones[k]);
+		}
+		StartCones = TempCones;
+	};
+
+	int ThreeCount2 = 0;
+	vector<Cone> TestCones2;
+	vector<int> OutVec2;
+	for (size_t i = 0; i != StartCones.size(); i++) {
+		int Dim = StartCones[i].ClosedPolyhedron.affine_dimension();
+		while (OutVec2.size() <= Dim) {
+			OutVec2.push_back(0);
+		};
+		OutVec2[Dim] += 1;
+		if (StartCones[i].ClosedPolyhedron.affine_dimension() == 3) {
+		cout << StartCones[i].ClosedPolyhedron.minimized_constraints() << endl;
+		ThreeCount2++;
+		TestCones2.push_back(StartCones[i]);
+		};
+	};
+	for (size_t i = 0; i != TestCones2.size(); i++) {
+		for (size_t j = i+1; j != TestCones2.size(); j++) {
+			int Dimm = IntersectCones(TestCones2[i].ClosedPolyhedron, TestCones2[j].ClosedPolyhedron).affine_dimension();
+			if (Dimm == 3) 
+				cout << "AAAA" << endl;
+			
+		};
+	};
+	cout << "THREECOUNT " << ThreeCount2 << endl;
+	PrintPoint(OutVec2);
+	cin.get();
+	/*
+	for (size_t i = 0; i != TestCones.size(); i++) {
+		bool FoundMatch = false;
+		for (size_t j = 0; j != StartCones.size(); j++) {
+			if (IntersectCones(TestCones[i].ClosedPolyhedron, StartCones[j].ClosedPolyhedron).affine_dimension() == 3) {
+				FoundMatch = true;
+				break;
+			};
+		};	
+		if (FoundMatch == false) {
+			cout << i << endl;
+			cout << TestCones[i].HOPolyhedron.minimized_generators() << endl;
+			cout << TestCones[i].HOPolyhedron.minimized_constraints() << endl;
+		};
+	};
+	cin.get();
+	*/
+	/*
+	vector<Cone> ConeVector;
+		// Start by initializing the objects.
+	vector<vector<Cone> > Cones;
+	int HullIndex = 0;
+	vector<Hull>::iterator it;
+	for (it=Hulls.begin(); it != Hulls.end(); it++) {
+		vector<Edge> Edges = (*it).Edges;
+		vector<Cone> HullCones;
+		vector<Edge>::iterator itr;
+		for (itr=Edges.begin(); itr != Edges.end(); itr++) {
+			HullCones.push_back((*itr).EdgeCone);
+		};
+	
+		if (HullIndex == 0) {
+			ConeVector = HullCones;
+		} else {
+			Cones.push_back(HullCones);
+		};			
+		HullIndex++;
+	};
+	cout << "ConeVector count: " << ConeVector.size() << endl;
+	cout << "Cones count: " << Cones.size() << endl;
+	
+	//Iterate through Cones
+	vector<vector<Cone> >::iterator ConesItr;
+	int TreeLevel = 1;
+	for (ConesItr=Cones.begin(); ConesItr != Cones.end(); ConesItr++) {
+		vector<Cone> TestCones = *ConesItr;
+		vector<Cone> NewCones;
+		//Iterate through Cones
+		vector<Cone>::iterator ConeItr;
+		for (ConeItr=ConeVector.begin(); ConeItr != ConeVector.end(); ConeItr++) {
+			//Iterate through TestCones
+			Cone Cone1 = *ConeItr;
+			vector<Cone>::iterator TestConesItr;
+			for (int i = 0; i != TestCones.size(); i++) {
+				if (find(Cone1.ClosedIntersectionIndices[TreeLevel].begin(), Cone1.ClosedIntersectionIndices[TreeLevel].end(), i) == Cone1.ClosedIntersectionIndices[TreeLevel].end()) continue;
+				Cone NewCone;
+				NewCone.ClosedPolyhedron = IntersectCones(TestCones[i].ClosedPolyhedron, Cone1.ClosedPolyhedron);
+				ConeIntersectionCount++;
+				int ExpectedDim = Cone1.ClosedPolyhedron.affine_dimension() - 1;
+				if (NewCone.ClosedPolyhedron.affine_dimension() == 0) {
+					continue;
+				};
+				NewCone.HOPolyhedron = IntersectCones(TestCones[i].HOPolyhedron, Cone1.HOPolyhedron);
+				if (NewCone.HOPolyhedron.affine_dimension() == 0) {
+					continue;
+				};
+				
+				for (size_t j = 0; j != Cone1.ClosedIntersectionIndices.size(); j++) {
+					NewCone.ClosedIntersectionIndices.push_back(IntersectSets(Cone1.ClosedIntersectionIndices[j], TestCones[i].ClosedIntersectionIndices[j]));
+				};
+				NewCones.push_back(NewCone);
+			};
+		};
+		ConeVector = NewCones;
+		printf("Finished level %d of tree with %lu levels. %lu cones remain at this level. IntersectionCount = %d.\n", TreeLevel, Cones.size(), ConeVector.size(),ConeIntersectionCount);
+		TreeLevel++;
+	};
+	vector<vector<int> > PretropismsTemp;
+	int ThreeDimCount = 0;
+	for (size_t i = 0; i != ConeVector.size(); i++) {
+		Generator_System gs = ConeVector[i].ClosedPolyhedron.minimized_generators();
+		cout << ConeVector[i].ClosedPolyhedron.affine_dimension() << endl;
+		cout << ConeVector[i].ClosedPolyhedron.minimized_constraints() << endl;
+		cout << gs << endl;
+		cout << "TEST" << endl;
+		if (ConeVector[i].ClosedPolyhedron.affine_dimension() == 3) ThreeDimCount++;
+		for (Generator_System::const_iterator gsi = gs.begin(), gs_end = gs.end(); gsi != gs_end; ++gsi) {
+			if ((*gsi).is_point() or (*gsi).is_closure_point()) {
+				continue;
+			};
+			vector<int> Pretrop = GeneratorToPoint(*gsi);
+			if (find(PretropismsTemp.begin(), PretropismsTemp.end(), Pretrop) == PretropismsTemp.end() ) {
+				PretropismsTemp.push_back(Pretrop);
+			};
+		};
+	};
+	//sort(PretropismsTemp.begin(), PretropismsTemp.end());
+
+	//PrintPoints(PretropismsTemp);
+	cout << "Number of pretropisms found: " << PretropismsTemp.size() << endl;
+
+	
+	cout << "Three dim count: " << ThreeDimCount << endl;
+	cin.get();
+	
+	
+	
+	*/
+	
+	
+	
+	
+	
+	
+	
+	
+	
 	
 	// This is one way to do it. It seems reasonable to pick sum, median, mean, min...
 	int SmallestInt = 1000000;
@@ -461,10 +703,7 @@ int main(int argc, char* argv[]) {
 		cout << "Internal error: value of -1 for SmallestIndex" << endl;
 		return 1;
 	};
-	//Hulls[SmallestIndex].Edges[0].EdgeCone.HOPolyhedron = Hulls[SmallestIndex].Edges[0].EdgeCone.ClosedPolyhedron;
-	//SharedCones[0].push_back(Hulls[SmallestIndex].Edges[0].EdgeCone);
-	
-	
+	SmallestIndex = 0;
 	int TotalProcessCount = atoi(argv[3]);
 	if (TotalProcessCount > thread::hardware_concurrency()) {
 		cout << "Internal error: hardware_concurrency = " << thread::hardware_concurrency() << " but TotalProcessCount = " << TotalProcessCount << endl;
@@ -481,7 +720,7 @@ int main(int argc, char* argv[]) {
 		ThreadJob TJ(SharedCones);
 		ThreadJobs.push_back(TJ);
 	};
-	
+
 	for (size_t i = 0; i != Hulls[SmallestIndex].Edges.size(); i++) {
 		ThreadJobs[i % TotalProcessCount].SharedCones[0].push_back(Hulls[SmallestIndex].Edges[i].EdgeCone);
 	};
@@ -506,19 +745,47 @@ int main(int argc, char* argv[]) {
 		else
 			this_thread::sleep_for(chrono::milliseconds(10));
 	};
-	
+	vector<int> TotalVec;
 	for (size_t i = 0; i != Output.ConeTree.size(); i++) {
-		
+		TotalVec.push_back(Output.ConeTree[i].size());
 		set<ConeWithIndicator>::iterator CWIIt;
 		for (CWIIt=Output.ConeTree[i].begin(); CWIIt != Output.ConeTree[i].end(); CWIIt++) {
-			if ((*CWIIt).IsMaximal)
+							
+			if ((*CWIIt).IsMaximal) {
 				Output.FVector[i]++;
+
+			} else {
+//			PrintPoint((*CWIIt).RayIndices);
+			};
 		};
 	};
+	cout << "MAXIMAL CONES------------------" << endl;
+		for (size_t i = 0; i != Output.ConeTree.size(); i++) {
+		cout << i << " " << Output.ConeTree[i].size() <<endl;
+		set<ConeWithIndicator>::iterator CWIIt;
+		for (CWIIt=Output.ConeTree[i].begin(); CWIIt != Output.ConeTree[i].end(); CWIIt++) {
+			PrintPoint((*CWIIt).RayIndices);
+							
+			if ((*CWIIt).IsMaximal) {
+
+			} else {
+			};
+		};
+		cout << endl;
+	};
+//	cin.get();
+	for(map<vector<int>,int >::iterator itt = Output.RayToIndexMap.begin(); itt != Output.RayToIndexMap.end(); ++itt) {
+		//PrintPoint(itt->first);
+	//	cout << itt->second << "\n";
+}
+	
+	
 	sort(Output.Pretropisms.begin(), Output.Pretropisms.end());
-//	PrintPoints(Output.Pretropisms);
+	PrintPoints(Output.Pretropisms);
+	
 	cout << "Maximal cone count--------" << endl;
 	PrintPoint(Output.FVector);
+	PrintPoint(TotalVec);
 	cout << "Number of pretropisms found: " << Output.Pretropisms.size() << endl;
 	cout << "Cleanup time: " << CleanupTime / CLOCKS_PER_SEC << endl;
 	cout << "Hull time: " << HullTime / CLOCKS_PER_SEC << endl;
