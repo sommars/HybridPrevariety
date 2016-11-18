@@ -8,10 +8,9 @@ namespace Parma_Polyhedra_Library {using IO_Operators::operator<<;}
 
 struct Cone {
 	NNC_Polyhedron HOPolyhedron;
-	NNC_Polyhedron ClosedPolyhedron;
-	vector<set<int> > ClosedIntersectionIndices; // 1 means that there is an intersection, 0 that there isn't
+	vector<set<int> > IntersectionIndices; // 1 means that there is an intersection, 0 that there isn't
 	vector<int> PolytopesVisited; // 1 means visited, 0 means unvisited
-	vector<NNC_Polyhedron> ConeHistory;
+	int PolytopesVisitedCount;
 };
 
 struct Edge {
@@ -56,6 +55,7 @@ struct TropicalPrevariety {
 	map<vector<int>, int> RayToIndexMap;
 	vector<set<ConeWithIndicator > > ConeTree;
 	vector<vector<int> > Pretropisms; // Consider ripping out
+	map<int, Generator> IndexToGenMap;
 	vector<int> FVector; // Consider ripping out
 };
 
@@ -161,13 +161,7 @@ void PrintPoints(vector<vector<int> > Points);
 void PrintPoint(set<int> Point);
 
 //------------------------------------------------------------------------------
-void PrintCPolyhedron(NNC_Polyhedron ph, bool PrintIf0Dim = true);
-
-//------------------------------------------------------------------------------
-void PrintCPolyhedrons(vector<NNC_Polyhedron> phs, bool PrintIf0Dim = true);
-
-//------------------------------------------------------------------------------
-inline set<int> IntersectSets(set<int> S1, set<int> S2) {
+inline set<int> IntersectSets(set<int> &S1, set<int> &S2) {
 	set<int>::iterator S1Itr = S1.begin();
 	set<int>::iterator S2Itr = S2.begin();
 	set<int> Result;
@@ -203,5 +197,3 @@ inline bool SetsDoIntersect(set<int> &S1, set<int> &S2) {
 	return false;
 };
 
-//------------------------------------------------------------------------------
-set<int> PreintersectWalkPolytope(int HullIndex, Cone NewCone, vector<Hull> &Hulls);
