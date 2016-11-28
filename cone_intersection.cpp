@@ -19,7 +19,7 @@ using namespace std;
 using namespace Parma_Polyhedra_Library;
 namespace Parma_Polyhedra_Library {using IO_Operators::operator<<;}
 
-double IntersectionTime, TestTime, CleanupTime;
+double IntersectionTime, SetIntersectTime, CleanupTime, AffineDimTime;
 int ConeIntersectionCount;
 
 //------------------------------------------------------------------------------
@@ -37,13 +37,20 @@ inline vector<Cone> DoCommonRefinement(int HullIndex, Cone &NewCone, vector<Hull
 		clock_t IntBegin = clock();
 		TestCone.HOPolyhedron = IntersectCones((*EdgeConeToTest).HOPolyhedron, NewCone.HOPolyhedron);
 		IntersectionTime += double(clock() - IntBegin);
+		
+		clock_t IntBegin2 = clock();
+		TestCone.HOPolyhedron.affine_dimension();
+		AffineDimTime += double(clock() - IntBegin2);
 		ConeIntersectionCount++;
 		if (TestCone.HOPolyhedron.affine_dimension() > 0) {
 			vector<set<int> > InitialSet1 (NewCone.IntersectionIndices.size());
 			TestCone.IntersectionIndices = InitialSet1;
 			for (size_t i = 0; i != NewCone.IntersectionIndices.size(); i++) {
-				if (NewCone.PolytopesVisited[i] == 0)
+				if (NewCone.PolytopesVisited[i] == 0) {
+					clock_t SetIntersectBegin = clock();
 					TestCone.IntersectionIndices[i] = IntersectSets((*EdgeConeToTest).IntersectionIndices[i], NewCone.IntersectionIndices[i]);
+					SetIntersectTime += double(clock() - SetIntersectBegin);
+				}
 			};
 			TestCone.PolytopesVisited = NewCone.PolytopesVisited;
 			TestCone.PolytopesVisitedCount = NewCone.PolytopesVisitedCount;
@@ -161,7 +168,7 @@ void ParseToPrevariety(vector<int> &ConeRayIndices, int ConeDim, TropicalPrevari
 };
 
 //------------------------------------------------------------------------------
-void ENUMERATETEST(vector<Hull> Hulls, int ProcessID, int ProcessCount, vector<ThreadJob> &ThreadJobs, vector<int> &BoredProcesses, TropicalPrevariety &Output, mutex &BPmtx, mutex &Outputmtx) {
+void ThreadEnum(vector<Hull> Hulls, int ProcessID, int ProcessCount, vector<ThreadJob> &ThreadJobs, vector<int> &BoredProcesses, TropicalPrevariety &Output, mutex &BPmtx, mutex &Outputmtx) {
 	vector<vector<int> > Pretropisms;
 	Cone C;
 	bool HasCone = false;
@@ -229,7 +236,7 @@ void ENUMERATETEST(vector<Hull> Hulls, int ProcessID, int ProcessCount, vector<T
 							continue;
 						gs.insert(*gsi);
 					};
-					gs = NNC_Polyhedron(gs).minimized_generators();
+					//gs = NNC_Polyhedron(gs).minimized_generators();
 					for (Generator_System::const_iterator gsi = gs.begin(), gs_end = gs.end(); gsi != gs_end; ++gsi) {
 						if ((*gsi).is_point() or (*gsi).is_closure_point() or (*gsi).is_line())
 							continue;							
@@ -238,17 +245,17 @@ void ENUMERATETEST(vector<Hull> Hulls, int ProcessID, int ProcessCount, vector<T
 						GSIt = Output.RayToIndexMap.find(Ray);
 						if (GSIt == Output.RayToIndexMap.end()) {
 							int NewIndex = Output.Pretropisms.size();
-							ConeRayIndices.push_back(NewIndex);
+							//ConeRayIndices.push_back(NewIndex);
 							Output.RayToIndexMap[Ray] = NewIndex;
-							Output.IndexToGenMap[NewIndex] = (*gsi);
+							//Output.IndexToGenMap[NewIndex] = (*gsi);
 							Output.Pretropisms.push_back(Ray);
-							cout << (*gsi) << endl;
+							//cout << (*gsi) << endl;
 						} else {
-							ConeRayIndices.push_back((*GSIt).second);
+						//	ConeRayIndices.push_back((*GSIt).second);
 						};
 					};
-					sort(ConeRayIndices.begin(), ConeRayIndices.end());
-					ParseToPrevariety(ConeRayIndices, ConeDim, Output, true);
+					//sort(ConeRayIndices.begin(), ConeRayIndices.end());
+					//ParseToPrevariety(ConeRayIndices, ConeDim, Output, true);
 				};
 				CleanupTime += double(clock() - TimeStart);
 				Outputmtx.unlock();
@@ -280,6 +287,8 @@ int main(int argc, char* argv[]) {
 	}
 	int n = atoi(argv[1]);
 	
+	bool Verbose = false;
+	
 	int TotalProcessCount = atoi(argv[3]);
 	if (TotalProcessCount > thread::hardware_concurrency()) {
 		cout << "Internal error: hardware_concurrency = " << thread::hardware_concurrency() << " but TotalProcessCount = " << TotalProcessCount << endl;
@@ -301,7 +310,9 @@ int main(int argc, char* argv[]) {
 	};
 	
 	double RandomSeed = time(NULL);
-	cout << fixed << "Random seed value: " << RandomSeed << endl;
+	if (Verbose) {
+		cout << fixed << "Random seed value: " << RandomSeed << endl;
+	};
 	srand(RandomSeed);
 	
 	vector<Hull> Hulls;
@@ -312,7 +323,7 @@ int main(int argc, char* argv[]) {
 	};
 	
 	for (size_t i = 0; i != PolynomialSystemSupport.size(); i++) {
-		Hulls.push_back(NewHull(PolynomialSystemSupport[i], VectorForOrientation));
+		Hulls.push_back(NewHull(PolynomialSystemSupport[i], VectorForOrientation, Verbose));
 	}
 	double HullTime = double(clock() - StartTime);
 
@@ -353,11 +364,15 @@ int main(int argc, char* argv[]) {
 				};
 			};
 		};
-		printf("Finished level %d of pre-intersections.\n", i);
+		if (Verbose) {
+			printf("Finished level %d of pre-intersections.\n", i);
+		};
 	};
-	cout << "Total Intersections: " << TotalInt << ", Non Intersections: " << NonInt << endl;
 	PreintersectTime = double(clock() - PreintTimeStart);
-	cout << "Preintersection time: " << PreintersectTime / CLOCKS_PER_SEC << endl;
+	if (Verbose) {
+		cout << "Total Intersections: " << TotalInt << ", Non Intersections: " << NonInt << endl;
+		cout << "Preintersection time: " << PreintersectTime / CLOCKS_PER_SEC << endl;
+	};
 	
 	// This is one way to do it. It seems reasonable to pick sum, median, mean, min...
 	int SmallestInt = 1000000;
@@ -402,7 +417,7 @@ int main(int argc, char* argv[]) {
 	typedef function<void()> work_type;
 	Thread_Pool<work_type> thread_pool(TotalProcessCount);
 	for (size_t i = 0; i != TotalProcessCount; i++) {
-		work_type work = bind(ENUMERATETEST, Hulls, i, TotalProcessCount, ref(ThreadJobs), ref(BoredProcesses), ref(Output), ref(BPmtx), ref(Outputmtx));
+		work_type work = bind(ThreadEnum, Hulls, i, TotalProcessCount, ref(ThreadJobs), ref(BoredProcesses), ref(Output), ref(BPmtx), ref(Outputmtx));
 		thread_pool.submit(make_threadable(work));
 	}
 	// Wait for all workers to complete.
@@ -415,6 +430,8 @@ int main(int argc, char* argv[]) {
 		else
 			this_thread::sleep_for(chrono::milliseconds(10));
 	};
+	double AlgorithmTotalTime = double(clock() - AlgorithmStartTime);
+	clock_t TimeAfterEndOfAlg = clock();
 	vector<int> TotalVec;
 	for (size_t i = 0; i != Output.ConeTree.size(); i++) {
 		TotalVec.push_back(Output.ConeTree[i].size());
@@ -424,13 +441,18 @@ int main(int argc, char* argv[]) {
 				Output.FVector[i]++;
 		};
 	};
-	cout << "MAXIMAL CONES------------------" << endl;
+	if (Verbose) {
+		cout << "MAXIMAL CONES------------------" << endl;
+	};
 		for (size_t i = 0; i != Output.ConeTree.size(); i++) {
-		cout << i << " " << Output.ConeTree[i].size() <<endl;
+		if (Verbose) {
+			cout << i << " " << Output.ConeTree[i].size() <<endl;
+		};
 		set<ConeWithIndicator>::iterator CWIIt;
 		for (CWIIt=Output.ConeTree[i].begin(); CWIIt != Output.ConeTree[i].end(); CWIIt++) {
-			PrintPoint((*CWIIt).RayIndices);
-							
+			if (Verbose) {
+				PrintPoint((*CWIIt).RayIndices);
+			};
 			if ((*CWIIt).IsMaximal) {
 
 			} else {
@@ -440,16 +462,26 @@ int main(int argc, char* argv[]) {
 	};	
 	
 	sort(Output.Pretropisms.begin(), Output.Pretropisms.end());
-	PrintPoints(Output.Pretropisms);
+	if (Verbose) {
+		PrintPoints(Output.Pretropisms);
+	} else {
+		PrintPointsForPython(Output.Pretropisms);
+	};
 	
-	cout << "Maximal cone count--------" << endl;
-	PrintPoint(Output.FVector);
-	PrintPoint(TotalVec);
-	cout << "Number of pretropisms found: " << Output.Pretropisms.size() << endl;
-	cout << "Cleanup time: " << CleanupTime / CLOCKS_PER_SEC << endl;
-	cout << "Hull time: " << HullTime / CLOCKS_PER_SEC << endl;
-	cout << "Intersection time: " << IntersectionTime / CLOCKS_PER_SEC << endl;
-	cout << "Preintersection time: " << PreintersectTime / CLOCKS_PER_SEC << endl;
-	cout << "Test time: " << TestTime / CLOCKS_PER_SEC << endl;
-	cout << "Number of intersections: " << ConeIntersectionCount << endl;
+	if (Verbose) {
+		cout << "Maximal cone count--------" << endl;
+		PrintPoint(Output.FVector);
+		PrintPoint(TotalVec);
+		cout << "Number of pretropisms found: " << Output.Pretropisms.size() << endl;
+		cout << "AffineDim time: " << AffineDimTime / CLOCKS_PER_SEC << endl;
+		cout << "Hull time: " << HullTime / CLOCKS_PER_SEC << endl;
+		cout << "Intersection time: " << IntersectionTime / CLOCKS_PER_SEC << endl;
+		cout << "Cleanup time: " << CleanupTime / CLOCKS_PER_SEC << endl;
+		cout << "Preintersection time: " << PreintersectTime / CLOCKS_PER_SEC << endl;
+		cout << "Set intersect time: " << SetIntersectTime / CLOCKS_PER_SEC << endl;
+		cout << "Number of intersections: " << ConeIntersectionCount << endl;
+		cout << "Time after end of alg: " << double(clock() - TimeAfterEndOfAlg) / CLOCKS_PER_SEC << endl;
+		cout << "Algorithm total time: " << AlgorithmTotalTime / CLOCKS_PER_SEC << endl;
+		cout << "Alg time - cone int time - set int time: " << (AlgorithmTotalTime - IntersectionTime - SetIntersectTime) / CLOCKS_PER_SEC << endl;
+	};
 }
