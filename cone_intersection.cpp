@@ -236,7 +236,7 @@ void ThreadEnum(vector<Hull> Hulls, int ProcessID, int ProcessCount, vector<Thre
 							continue;
 						gs.insert(*gsi);
 					};
-					//gs = NNC_Polyhedron(gs).minimized_generators();
+					gs = NNC_Polyhedron(gs).minimized_generators(); // Should be a better way to do this...
 					for (Generator_System::const_iterator gsi = gs.begin(), gs_end = gs.end(); gsi != gs_end; ++gsi) {
 						if ((*gsi).is_point() or (*gsi).is_closure_point() or (*gsi).is_line())
 							continue;							
@@ -281,34 +281,42 @@ void ThreadEnum(vector<Hull> Hulls, int ProcessID, int ProcessCount, vector<Thre
 //------------------------------------------------------------------------------
 int main(int argc, char* argv[]) {
 	clock_t StartTime = clock();
+	
+	bool Verbose;
+	
+	int TotalProcessCount;
+	vector<vector<vector<int> > > PolynomialSystemSupport;
 	if (argc != 4) {
-		cout << "Internal error: expected three arguments." << endl;
-		return 1;
-	}
-	int n = atoi(argv[1]);
-	
-	bool Verbose = false;
-	
-	int TotalProcessCount = atoi(argv[3]);
-	if (TotalProcessCount > thread::hardware_concurrency()) {
-		cout << "Internal error: hardware_concurrency = " << thread::hardware_concurrency() << " but TotalProcessCount = " << TotalProcessCount << endl;
-		return 1;
+		if (Verbose) {
+			cout << "Expected three arguments. Waiting for user input system..." << endl;
+		}
+		TotalProcessCount = 1;
+		string input;
+		cin >> input;
+		PolynomialSystemSupport = ParseToSupport(input);
+		Verbose = false;
+	} else {
+		int n = atoi(argv[1]);
+		string SystemName = string(argv[2]);
+		if (SystemName == "reducedcyclicn") {
+				PolynomialSystemSupport = CyclicN(n, true);
+			} else if (SystemName == "cyclicn") {
+				PolynomialSystemSupport = CyclicN(n, false);
+			} else if (SystemName == "random") {
+				PolynomialSystemSupport = RandomSimplices(n);
+			} else {
+				cout << "Internal error: only supported systems are: "
+					<< "reducedcyclicn, cyclicn, or random." << endl;
+				return 1;
+		};
+		TotalProcessCount = atoi(argv[3]);
+		if (TotalProcessCount > thread::hardware_concurrency()) {
+			cout << "Internal error: hardware_concurrency = " << thread::hardware_concurrency() << " but TotalProcessCount = " << TotalProcessCount << endl;
+			return 1;
+		};
+		Verbose = true;
 	};
 
-	string SystemName = string(argv[2]);
-	vector<vector<vector<int> > > PolynomialSystemSupport;
-	if (SystemName == "reducedcyclicn") {
-		PolynomialSystemSupport = CyclicN(n, true);
-	} else if (SystemName == "cyclicn") {
-		PolynomialSystemSupport = CyclicN(n, false);
-	} else if (SystemName == "random") {
-		PolynomialSystemSupport = RandomSimplices(n);
-	} else {
-		cout << "Internal error: only supported systems are: "
-			<< "reducedcyclicn, cyclicn, or random." << endl;
-		return 1;
-	};
-	
 	double RandomSeed = time(NULL);
 	if (Verbose) {
 		cout << fixed << "Random seed value: " << RandomSeed << endl;
