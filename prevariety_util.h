@@ -73,7 +73,6 @@ struct ThreadJob {
 inline NNC_Polyhedron IntersectCones(NNC_Polyhedron &ph1, NNC_Polyhedron &ph2) {
 	NNC_Polyhedron ph = ph1;
 	ph.add_constraints(ph2.constraints());
-	ph.affine_dimension();
 	return ph;
 };
 
@@ -95,7 +94,7 @@ vector<vector<int> > GeneratorSystemToPoints(Generator_System gs);
 vector<int> ConstraintToPoint(Constraint c);
 
 //------------------------------------------------------------------------------
-Hull NewHull(vector<vector<int> > Points, vector<double> VectorForOrientation);
+Hull NewHull(vector<vector<int> > Points, vector<double> VectorForOrientation, bool Verbose);
 
 //------------------------------------------------------------------------------
 void FindFacets(Hull &H);
@@ -159,6 +158,12 @@ void PrintPoints(vector<vector<int> > Points);
 
 //------------------------------------------------------------------------------
 void PrintPoint(set<int> Point);
+
+//------------------------------------------------------------------------------
+void PrintPointForPython(vector<int> Point);
+
+//------------------------------------------------------------------------------
+void PrintPointsForPython(vector<vector<int> > Points);
 
 //------------------------------------------------------------------------------
 inline set<int> IntersectSets(set<int> &S1, set<int> &S2) {
