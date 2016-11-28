@@ -202,3 +202,5 @@ inline bool SetsDoIntersect(set<int> &S1, set<int> &S2) {
 	return false;
 };
 
+//------------------------------------------------------------------------------
+vector<vector<vector<int> > > ParseToSupport(string Input);
