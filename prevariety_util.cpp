@@ -508,3 +508,41 @@ void PrintPointsForPython(vector<vector<int> > Points) {
 	};
 	cout << "]";
 }
+
+//------------------------------------------------------------------------------
+vector<vector<vector<int> > > ParseToSupport(string Input) {
+	vector<vector<vector<int> > > Result;
+	int ParenCount = 0;
+	string NewInt;
+	// Takes in strings that look like this:
+	//'[[[1,0,0,0][0,1,0,0][0,0,1,0][0,0,0,1]][[1,1,0,0][0,1,1,0][1,0,0,1][0,0,1,1]][[1,1,1,0][1,1,0,1][1,0,1,1][0,1,1,1]]]'
+	vector<vector<int> > Polynomial;
+	vector<int> Monomial;
+	for (string::iterator it=Input.begin(); it!=Input.end(); ++it) {
+		if ((*it) == '[') {
+			ParenCount++;
+		} else if ((*it) == ']') {
+			ParenCount--;
+			if (NewInt.length() > 0) {
+				Monomial.push_back(stoi(NewInt));
+				NewInt.clear();
+			};
+			if (ParenCount == 2) {
+				Polynomial.push_back(Monomial);
+				Monomial.clear();
+			} else if (ParenCount == 1) {
+				Result.push_back(Polynomial);
+				Polynomial.clear();
+			};
+		} else if ((*it) == ',') {
+			if (NewInt.length() > 0) {
+				Monomial.push_back(stoi(NewInt));
+				NewInt.clear();
+			};
+		} else {
+			NewInt += (*it);
+		};
+	};
+
+	return Result;
+};
