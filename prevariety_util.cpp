@@ -93,7 +93,7 @@ vector<int> ConstraintToPoint(Constraint c) { //page 251
 }
 
 //------------------------------------------------------------------------------
-Hull NewHull(vector<vector<int> > Points, vector<double> VectorForOrientation) {
+Hull NewHull(vector<vector<int> > Points, vector<double> VectorForOrientation, bool Verbose) {
 	Hull H;
 	H.CPolyhedron = FindCPolyhedron(Points);
 	
@@ -302,7 +302,7 @@ Hull NewHull(vector<vector<int> > Points, vector<double> VectorForOrientation) {
 				
 				//H.Edges[k].EdgeCone.HOPolyhedron = H.Edges[k].EdgeCone.ClosedPolyhedron;
 				
-				
+				//H.Edges[k].EdgeCone.HOPolyhedron = NNC_Polyhedron(csClosed);
 				H.Edges[k].EdgeCone.HOPolyhedron.minimized_constraints();
 				H.Edges[k].EdgeCone.HOPolyhedron.minimized_generators();
 				H.Edges[k].EdgeCone.HOPolyhedron.affine_dimension();
@@ -322,13 +322,14 @@ Hull NewHull(vector<vector<int> > Points, vector<double> VectorForOrientation) {
 			cin.get();
 		};
 	};
-	cout << "Convex hull------------------------" << endl;
-	PrintPoints(H.Points);
-	cout << "Affine dimension: " << H.AffineDimension << endl;
-	cout << "Space dimension: " << H.SpaceDimension << endl;
-	cout << "Number of edges: " << H.Edges.size() << endl;
-	cout << "Number of facets: " << H.Facets.size() << endl << endl;
-	
+	if (Verbose) {
+		cout << "Convex hull------------------------" << endl;
+		PrintPoints(H.Points);
+		cout << "Affine dimension: " << H.AffineDimension << endl;
+		cout << "Space dimension: " << H.SpaceDimension << endl;
+		cout << "Number of edges: " << H.Edges.size() << endl;
+		cout << "Number of facets: " << H.Facets.size() << endl << endl;
+	};
 	return H;
 }
 
@@ -485,4 +486,25 @@ void PrintPoint(set<int> Point) {
 		cout << (*it) << " ";
 	}
 	cout << "}" << endl;
+}
+
+//------------------------------------------------------------------------------
+void PrintPointForPython(vector<int> Point) {
+	vector<int>::iterator it;
+	cout << "[ ";
+	for (it=Point.begin(); it != Point.end(); it++) {
+		cout << (*it) << ",";
+	}
+	cout << "]";
+}
+
+//------------------------------------------------------------------------------
+void PrintPointsForPython(vector<vector<int> > Points) {
+	vector<vector<int> >::iterator itr;
+	cout << "[";
+	for (itr=Points.begin(); itr != Points.end(); itr++) {
+		PrintPointForPython(*itr);
+		cout << ",";
+	};
+	cout << "]";
 }
