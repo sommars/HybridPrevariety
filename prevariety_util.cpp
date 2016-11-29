@@ -6,23 +6,8 @@
 using namespace std;
 using namespace Parma_Polyhedra_Library;
 namespace Parma_Polyhedra_Library {using IO_Operators::operator<<;}
-int ThreeDimCount = 0;
 //------------------------------------------------------------------------------
 vector<int> GeneratorToPoint(Generator g) { //page 251
-	vector<int> Result;
-	for (size_t i = 0; i < g.space_dimension(); i++) {
-		stringstream s;
-		s << (g).coefficient(Variable(i));
-		int ToAppend;
-		istringstream(s.str()) >> ToAppend;
-		Result.push_back(ToAppend);
-	}
-
-	return Result;
-}
-
-//------------------------------------------------------------------------------
-vector<int> GeneratorToIntPoint(Generator g) { //page 251
 	vector<int> Result;
 	for (size_t i = 0; i < g.space_dimension(); i++) {
 		stringstream s;
@@ -93,17 +78,10 @@ vector<int> ConstraintToPoint(Constraint c) { //page 251
 }
 
 //------------------------------------------------------------------------------
-Hull NewHull(vector<vector<int> > Points, vector<double> VectorForOrientation, bool Verbose) {
+vector<Cone> NewHull(vector<vector<int> > Points, vector<double> VectorForOrientation, bool Verbose) {
 	Hull H;
 	H.CPolyhedron = FindCPolyhedron(Points);
-	
-	Constraint_System cstemp = H.CPolyhedron.minimized_constraints();
-	for (Constraint_System::const_iterator i = cstemp.begin(),
-	cs1_end = cstemp.end(); i != cs1_end; ++i) {
-		if ((*i).is_equality()) {
-			H.Eqs.push_back(*i);
-		};
-	};
+	vector<Cone> OutputCones;
 	map<double,vector<int> > DoubleToPt;
 	vector<double> IPs;
 	for (size_t i = 0; i != Points.size(); i++) {
@@ -133,17 +111,13 @@ Hull NewHull(vector<vector<int> > Points, vector<double> VectorForOrientation, b
 		vector<Constraint> Constraints;
 		vector<int> Pt = H.Points[i];
 		int PtIndex = H.PointToIndexMap[Pt];
-		vector<int> Edges;
-		vector<int> Facets;
 		// Go through all of the edges. If the edge is not on the facet.
 		for (size_t j = 0; j != H.Edges.size(); j++) {
-			Edge E = H.Edges[j];
-			if (E.PointIndices.find(PtIndex) != E.PointIndices.end()) {
-				Edges.push_back(j);
+			if (H.Edges[j].PointIndices.find(PtIndex) != H.Edges[j].PointIndices.end()) {
 				set<int>::iterator PtIter;
 				vector<int> OtherPt;
 				int OtherPtIndex;
-				for (PtIter=E.PointIndices.begin(); PtIter != E.PointIndices.end(); PtIter++) {
+				for (PtIter=H.Edges[j].PointIndices.begin(); PtIter != H.Edges[j].PointIndices.end(); PtIter++) {
 					OtherPtIndex = (*PtIter);
 					if (OtherPtIndex != PtIndex) {
 						OtherPt = H.IndexToPointMap[(*PtIter)];
@@ -173,155 +147,35 @@ Hull NewHull(vector<vector<int> > Points, vector<double> VectorForOrientation, b
 			if (!TempConstraint.is_strict_inequality()) {
 				//Introduce it as an equation to get a lower dimensional cone, which you output.
 				Constraints[j] = InequalityToEquation(TempConstraint);
-				Constraint_System cs1;
+
+				// Now we raise to a higher dimension to represent as a standard linear programming problem.
+				Constraint_System csHigherDim;
+				csHigherDim.insert(Constraint(Variable(H.SpaceDimension) >= 1));
 				for (size_t k = 0; k != Constraints.size(); k++) {
-					cs1.insert(Constraints[k]);
+					if (Constraints[k].is_strict_inequality()) {
+						Linear_Expression LE;
+						for (size_t l = 0; l < Constraints[k].space_dimension(); l++) {
+							LE += Constraints[k].coefficient(Variable(l)) * Variable(l);
+						};
+						LE += -1 * Variable(Constraints[k].space_dimension());
+						csHigherDim.insert(Constraint(LE >= 0));
+					} else {
+						csHigherDim.insert(Constraints[k]);
+					};
+
 				};
-				//Introduce it as a strict inequality to describe the rest. Call recursively on this cone.
 				Cone NewCone;
-				NewCone.HOPolyhedron = NNC_Polyhedron(cs1);
-				HalfOpenCones.push_back(NewCone);
+				NewCone.HOPolyhedron = C_Polyhedron(csHigherDim);
+				NewCone.HOPolyhedron.minimized_constraints();
+				NewCone.HOPolyhedron.minimized_generators();
+				NewCone.HOPolyhedron.affine_dimension();
+				OutputCones.push_back(NewCone);
+				//Introduce it as a strict inequality to describe the rest. Call recursively.
 				Constraints[j] = InequalityToStrictInequality(TempConstraint);
 			};
 		};
-
-	};
-	for (size_t i = 0; i != HalfOpenCones.size(); i++) {
-		for (size_t j = i+1; j != HalfOpenCones.size(); j++) {
-//			if (!HalfOpenCones[i].HOPolyhedron.is_disjoint_from(HalfOpenCones[j].HOPolyhedron)) {
-			if (IntersectCones(HalfOpenCones[i].HOPolyhedron,HalfOpenCones[j].HOPolyhedron).affine_dimension() > 0) {
-				cout << "Internal Error: Two half open cones from the same polytope are not disjoint." << endl;
-				cin.get();
-			};
-		};
-	};
-	for (size_t i = 0; i != HalfOpenCones.size(); i++) {
-		//take a random vector from cone
-		vector<int> RandomVector(H.SpaceDimension, 0);
-		for (Generator_System::const_iterator ii = HalfOpenCones[i].HOPolyhedron.minimized_generators().begin(), gs_end = HalfOpenCones[i].HOPolyhedron.minimized_generators().end(); ii != gs_end; ++ii) {
-			if (!(*ii).is_ray() && !(*ii).is_line()) {
-				continue;
-			};
-			for (size_t j = 0; j != H.SpaceDimension; j++) {
-				stringstream s;
-				s << (*ii).coefficient(Variable(j));
-				int ToAppend;
-				istringstream(s.str()) >> ToAppend;
-				RandomVector[j] += ToAppend;
-			};
-		};
-		//take initial form using that vector.
-		vector<vector<int> > InitialForm = FindInitialForm(H.Points, RandomVector);
-		if (InitialForm.size() != 2) {
-			cout << "Internal Error: initial form is not of length two. It is of size " << InitialForm.size() << endl;
-			PrintPoint(RandomVector);
-			cout << endl;
-			PrintPoints(InitialForm);
-			cin.get();
-		};
-		set<int> InitialIndices;
-		for (vector<vector<int> >::iterator InitialFormItr=InitialForm.begin();
-		InitialFormItr != InitialForm.end(); InitialFormItr++) {
-			InitialIndices.insert(H.PointToIndexMap[*InitialFormItr]);
-		};
-		for (size_t k = 0; k != H.Edges.size(); k++) {
-			if (H.Edges[k].PointIndices == InitialIndices) {
-				H.Edges[k].EdgeCone = HalfOpenCones[i];
-				Constraint_System csClosed;
-				for (Constraint_System::const_iterator csc = HalfOpenCones[i].HOPolyhedron.minimized_constraints().begin(), cs_end = HalfOpenCones[i].HOPolyhedron.minimized_constraints().end(); csc != cs_end; ++csc) {
-					Constraint cc = (*csc);
-					if (cc.is_strict_inequality()) {
-						csClosed.insert(StrictInequalityToNonStrictInequality(cc));
-					} else {
-						csClosed.insert(cc);
-					};
-				};
-				
-				
-				Constraint_System csTest;
-				int PtIndex = *(H.Edges[k].PointIndices.begin());
-				int PtIndex2 = *(H.Edges[k].PointIndices.rbegin());
-				vector<int> Pt11 = H.IndexToPointMap[PtIndex];
-				vector<int> Pt22 = H.IndexToPointMap[PtIndex2];
-				Linear_Expression LEe;
-				for (size_t kk = 0; kk != Pt11.size(); kk++) {
-					LEe += (Pt22[kk] - Pt11[kk]) * Variable(kk);
-				};
-				csTest.insert(LEe == 0);
-				for (size_t q = 0; q != H.Edges.size(); q++) {
-					if (k == q)
-						continue;
-					
-					int OtherPtIndex = -1;
-					if (*(H.Edges[q].PointIndices.begin()) == PtIndex)
-						OtherPtIndex = *(H.Edges[q].PointIndices.rbegin());
-					
-					if (*(H.Edges[q].PointIndices.rbegin()) == PtIndex)
-						OtherPtIndex = *(H.Edges[q].PointIndices.begin());
-						
-					if (OtherPtIndex == -1)
-						continue;
-					vector<int> Pt1 = H.IndexToPointMap[PtIndex];
-					vector<int> Pt2 = H.IndexToPointMap[OtherPtIndex];
-//					cout << "HERE!" << endl;
-//					PrintPoint(Pt1);
-//					PrintPoint(Pt2);
-					Linear_Expression LE;
-					for (size_t kk = 0; kk != Pt1.size(); kk++) {
-						LE += (Pt2[kk] - Pt1[kk]) * Variable(kk);
-					};
-//					cout << "CONSTRAINT! " << (Constraint(LE >= 0)) << endl;
-					csTest.insert(Constraint(LE >= 0));
-				};
-//				cout << "NEW" << endl;
-//				if (NNC_Polyhedron(csTest).minimized_constraints() != NNC_Polyhedron(csClosed).minimized_constraints()) {
-//					cout << NNC_Polyhedron(csTest).minimized_constraints() << endl;
-//					cout << NNC_Polyhedron(csClosed).minimized_constraints() << endl;
-//					cin.get();
-//				};
-	/*			
-				cout << "NEW" << endl;
-				cout << NNC_Polyhedron(csTest).minimized_constraints() << endl;
-				cout << NNC_Polyhedron(csTest).minimized_generators() << endl;
-				cout << NNC_Polyhedron(csTest).affine_dimension() << endl;
-		*/		
-				
-				
-				
-//				H.Edges[k].EdgeCone.ClosedPolyhedron = NNC_Polyhedron(csClosed);
-/*				H.Edges[k].EdgeCone.ClosedPolyhedron = NNC_Polyhedron(csTest);
-				H.Edges[k].EdgeCone.ClosedPolyhedron.minimized_constraints();
-				H.Edges[k].EdgeCone.ClosedPolyhedron.minimized_generators();
-				H.Edges[k].EdgeCone.ClosedPolyhedron.affine_dimension();*/
-			/*	cout << "OLD" << endl;
-				cout << H.Edges[k].EdgeCone.ClosedPolyhedron.affine_dimension() << endl;
-				cout << H.Edges[k].EdgeCone.ClosedPolyhedron.minimized_constraints() << endl;
-				cout << H.Edges[k].EdgeCone.ClosedPolyhedron.minimized_generators() << endl;
-				cout << "above" << endl;
-				cin.get();*/
-				
-				//H.Edges[k].EdgeCone.HOPolyhedron = H.Edges[k].EdgeCone.ClosedPolyhedron;
-				
-				//H.Edges[k].EdgeCone.HOPolyhedron = NNC_Polyhedron(csClosed);
-				H.Edges[k].EdgeCone.HOPolyhedron.minimized_constraints();
-				H.Edges[k].EdgeCone.HOPolyhedron.minimized_generators();
-				H.Edges[k].EdgeCone.HOPolyhedron.affine_dimension();
-				H.Edges[k].HasEdgeCone = true;
-				
-				break;
-			} else if (k == H.Edges.size() - 1) {
-				cout << "Internal Error: edge not matched with cone." << endl;
-				cin.get();
-			};
-		};
 	};
 
-	for (size_t i = 0; i != H.Edges.size(); i++) {
-		if (!H.Edges[i].HasEdgeCone) {
-			cout << "Internal Error: edge never found a cone" << endl;
-			cin.get();
-		};
-	};
 	if (Verbose) {
 		cout << "Convex hull------------------------" << endl;
 		PrintPoints(H.Points);
@@ -330,7 +184,7 @@ Hull NewHull(vector<vector<int> > Points, vector<double> VectorForOrientation, b
 		cout << "Number of edges: " << H.Edges.size() << endl;
 		cout << "Number of facets: " << H.Facets.size() << endl << endl;
 	};
-	return H;
+	return OutputCones;
 }
 
 //------------------------------------------------------------------------------
@@ -444,7 +298,7 @@ double DoubleInnerProduct(vector<int> V1, vector<double> V2) {
 }
 
 //------------------------------------------------------------------------------
-NNC_Polyhedron FindCPolyhedron(vector<vector<int> > Points) {
+C_Polyhedron FindCPolyhedron(vector<vector<int> > Points) {
 	Generator_System gs;
 	vector<vector<int> >::iterator itr;
 	for (itr=Points.begin(); itr != Points.end(); itr++) {
@@ -455,9 +309,7 @@ NNC_Polyhedron FindCPolyhedron(vector<vector<int> > Points) {
 		};
 		gs.insert(point(LE));
 	};
-	NNC_Polyhedron ph = NNC_Polyhedron(gs);
-	
-	return ph;
+	return C_Polyhedron(gs);
 }
 
 //------------------------------------------------------------------------------
