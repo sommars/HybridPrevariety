@@ -6,16 +6,36 @@ using namespace std;
 using namespace Parma_Polyhedra_Library;
 namespace Parma_Polyhedra_Library {using IO_Operators::operator<<;}
 
-struct Cone {
-	NNC_Polyhedron HOPolyhedron;
-	vector<set<int> > IntersectionIndices; // 1 means that there is an intersection, 0 that there isn't
-	vector<int> PolytopesVisited; // 1 means visited, 0 means unvisited
-	int PolytopesVisitedCount;
+struct RelationTable {
+	vector<bool> IntersectionIndices; // 1 means that there is an intersection, 0 that there isn't
+	int Count;
 };
 
+class Cone {
+	public:
+		C_Polyhedron HOPolyhedron;
+		vector<RelationTable> RelationTables;
+		vector<bool> PolytopesVisited; // 1 means visited, 0 means unvisited
+		int PolytopesVisitedCount;
+//	public:
+		//Cone(C_Polyhedron, int, int);
+//		Cone(int);
+//		Cone();
+};
+
+//Cone::Cone (int PolysVisitedCount) {
+//	PolytopesVisitedCount = PolysVisitedCount;
+//}
+/*
+Cone::Cone (C_Polyhedron HOPoly, int PolytopesCount, int PolysVisitedCount) {
+	HOPolyhedron = HOPoly;
+	PolytopesVisited(PolytopesCount, 0);
+	IntersectionIndices(PolytopesCount);
+	PolytopesVisitedCount = PolysVisitedCount;
+};
+*/
+
 struct Edge {
-	Cone EdgeCone;
-	bool HasEdgeCone;
 	set<int> PointIndices;
 	set<int> NeighborIndices;
 };
@@ -29,11 +49,11 @@ struct Hull {
 	map<vector<int>,int> PointToIndexMap;
 	map<int,vector<int> > IndexToPointMap;
 	vector<Edge> Edges;
+	vector<Cone> Cones;
 	vector<Facet> Facets;
-	NNC_Polyhedron CPolyhedron;
+	C_Polyhedron CPolyhedron;
 	int AffineDimension;
 	int SpaceDimension;
-	vector<Constraint> Eqs;
 };
 
 struct ConeWithIndicator {
@@ -61,8 +81,8 @@ struct TropicalPrevariety {
 
 struct ThreadJob {
 	mutable mutex M;
-	vector<vector<Cone> > SharedCones;
-	ThreadJob(vector<vector<Cone> > ConeVector): SharedCones(ConeVector) {};
+	vector<list<Cone> > SharedCones;
+	ThreadJob(vector<list<Cone> > ConeVector): SharedCones(ConeVector) {};
 	ThreadJob(const ThreadJob& TJ) {
 		lock_guard<mutex> lock(TJ.M);
 		SharedCones = TJ.SharedCones;
@@ -94,7 +114,7 @@ vector<vector<int> > GeneratorSystemToPoints(Generator_System gs);
 vector<int> ConstraintToPoint(Constraint c);
 
 //------------------------------------------------------------------------------
-Hull NewHull(vector<vector<int> > Points, vector<double> VectorForOrientation, bool Verbose);
+vector<Cone> NewHull(vector<vector<int> > Points, vector<double> VectorForOrientation, bool Verbose);
 
 //------------------------------------------------------------------------------
 void FindFacets(Hull &H);
@@ -148,7 +168,7 @@ inline vector<vector<int> > FindInitialForm(vector<vector<int> > &Points, vector
 };
 
 //------------------------------------------------------------------------------
-NNC_Polyhedron FindCPolyhedron(vector<vector<int> > Points);
+C_Polyhedron FindCPolyhedron(vector<vector<int> > Points);
 
 //------------------------------------------------------------------------------
 void PrintPoint(vector<int> Point);
@@ -161,6 +181,21 @@ void PrintPoint(set<int> Point);
 
 //------------------------------------------------------------------------------
 void PrintPointForPython(vector<int> Point);
+
+//------------------------------------------------------------------------------
+inline void PrintPoint(vector<bool> Point) {
+	vector<bool>::iterator it;
+	cout << "{ ";
+	for (it=Point.begin(); it != Point.end(); it++) {
+		cout << (*it) << " ";
+	}
+	cout << "}" << endl;
+};
+
+//------------------------------------------------------------------------------
+inline void PrintPoint(RelationTable RT) {
+	PrintPoint(RT.IntersectionIndices);
+};
 
 //------------------------------------------------------------------------------
 void PrintPointsForPython(vector<vector<int> > Points);
@@ -203,4 +238,20 @@ inline bool SetsDoIntersect(set<int> &S1, set<int> &S2) {
 };
 
 //------------------------------------------------------------------------------
+inline RelationTable IntersectRTs(RelationTable &R1, RelationTable &R2) {
+	vector<bool> Temp(R1.IntersectionIndices.size());
+	RelationTable RT;
+	RT.Count = 0;
+	RT.IntersectionIndices = Temp;
+	for (size_t i = 0; i != R1.IntersectionIndices.size(); i++) {
+		if (R1.IntersectionIndices[i] and R2.IntersectionIndices[i]) {
+			RT.IntersectionIndices[i] = true;
+			RT.Count++;
+		};
+	};
+	return RT;
+};
+
+//------------------------------------------------------------------------------
 vector<vector<vector<int> > > ParseToSupport(string Input);
+
