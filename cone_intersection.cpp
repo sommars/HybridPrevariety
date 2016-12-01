@@ -31,7 +31,7 @@ inline list<Cone> DoCommonRefinement(int HullIndex, Cone &NewCone, vector<vector
 	Cone *ConeToTest;
 //	set<int>::iterator NextEdge;
 //	for (NextEdge = (*IntersectionIndices).begin(); NextEdge != (*IntersectionIndices).end(); NextEdge++) {
-	for (size_t j = 0; j != (*RT).IntersectionIndices.size(); j++) {
+	for (boost::dynamic_bitset<>::size_type j = 0; j != (*RT).IntersectionIndices.size(); j++) {
 		if (!(*RT).IntersectionIndices[j])
 			continue;
 		ConeToTest = &(*HIndex)[j];
@@ -361,7 +361,7 @@ int main(int argc, char* argv[]) {
 				RT.Count = 0;
 				HullCones[i][j].RelationTables.push_back(RT);
 				for(size_t l = 0; l != HullCones[k].size(); l++) {
-					HullCones[i][j].RelationTables[k].IntersectionIndices.push_back(false);
+					HullCones[i][j].RelationTables[k].IntersectionIndices.push_back(0);
 				};
 			};
 		};
@@ -383,8 +383,8 @@ int main(int argc, char* argv[]) {
 			for(size_t k = 0; k != Cones1.size(); k++){
 				for(size_t l = 0; l != Cones2.size(); l++){
 					if (IntersectCones(Cones1[k].HOPolyhedron, Cones2[l].HOPolyhedron).affine_dimension() >= 1) {
-						HullCones[i][k].RelationTables[j].IntersectionIndices[l] = true;
-						HullCones[j][l].RelationTables[i].IntersectionIndices[k] = true;
+						HullCones[i][k].RelationTables[j].IntersectionIndices[l] = 1;
+						HullCones[j][l].RelationTables[i].IntersectionIndices[k] = 1;
 						HullCones[i][k].RelationTables[j].Count++;
 						HullCones[j][l].RelationTables[i].Count++;
 					} else {
