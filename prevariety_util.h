@@ -2,12 +2,14 @@
 #include <iostream>
 #include <list>
 #include <mutex>
+#include <boost/dynamic_bitset.hpp>
+
 using namespace std;
 using namespace Parma_Polyhedra_Library;
 namespace Parma_Polyhedra_Library {using IO_Operators::operator<<;}
 
 struct RelationTable {
-	vector<bool> IntersectionIndices; // 1 means that there is an intersection, 0 that there isn't
+	boost::dynamic_bitset<> IntersectionIndices; // 1 means that there is an intersection, 0 that there isn't
 	int Count;
 };
 
@@ -194,7 +196,7 @@ inline void PrintPoint(vector<bool> Point) {
 
 //------------------------------------------------------------------------------
 inline void PrintPoint(RelationTable RT) {
-	PrintPoint(RT.IntersectionIndices);
+	//PrintPoint(RT.IntersectionIndices);
 };
 
 //------------------------------------------------------------------------------
@@ -238,17 +240,10 @@ inline bool SetsDoIntersect(set<int> &S1, set<int> &S2) {
 };
 
 //------------------------------------------------------------------------------
-inline RelationTable IntersectRTs(RelationTable &R1, RelationTable &R2) {
-	vector<bool> Temp(R1.IntersectionIndices.size());
+inline RelationTable IntersectRTs(RelationTable R1, RelationTable &R2) {
 	RelationTable RT;
-	RT.Count = 0;
-	RT.IntersectionIndices = Temp;
-	for (size_t i = 0; i != R1.IntersectionIndices.size(); i++) {
-		if (R1.IntersectionIndices[i] and R2.IntersectionIndices[i]) {
-			RT.IntersectionIndices[i] = true;
-			RT.Count++;
-		};
-	};
+	RT.IntersectionIndices = R1.IntersectionIndices&=R2.IntersectionIndices;
+	RT.Count = RT.IntersectionIndices.count();
 	return RT;
 };
 
