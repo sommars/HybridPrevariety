@@ -7,16 +7,18 @@ using namespace std;
 using namespace Parma_Polyhedra_Library;
 namespace Parma_Polyhedra_Library {using IO_Operators::operator<<;}
 //------------------------------------------------------------------------------
-vector<int> GeneratorToPoint(Generator g) { //page 251
+vector<int> GeneratorToPoint(Generator g, bool KnockOffLastTerm) { //page 251
 	vector<int> Result;
-	for (size_t i = 0; i < g.space_dimension(); i++) {
+	int Dim = 0;
+	if (KnockOffLastTerm)
+		Dim = 1;
+	for (size_t i = 0; i < g.space_dimension() - Dim; i++) {
 		stringstream s;
 		s << (g).coefficient(Variable(i));
 		int ToAppend;
 		istringstream(s.str()) >> ToAppend;
 		Result.push_back(ToAppend);
 	}
-
 	return Result;
 }
 
@@ -31,17 +33,6 @@ Constraint InequalityToStrictInequality(Constraint c) {
 	vector<int> CP2 = ConstraintToPoint(c2);
 	return c2;
 }
-//------------------------------------------------------------------------------
-Constraint StrictInequalityToNonStrictInequality(Constraint c) {
-	Linear_Expression LE;
-	for (size_t i = 0; i < c.space_dimension(); i++) {
-		LE += c.coefficient(Variable(i)) * Variable(i);
-	};
-	Constraint c2(LE >= c.inhomogeneous_term());
-	vector<int> CP1 = ConstraintToPoint(c);
-	vector<int> CP2 = ConstraintToPoint(c2);
-	return c2;
-}
 
 //------------------------------------------------------------------------------
 Constraint InequalityToEquation(Constraint c) {
@@ -51,16 +42,6 @@ Constraint InequalityToEquation(Constraint c) {
 	};
 	Constraint c2(LE == c.inhomogeneous_term());
 	return c2;
-}
-
-//------------------------------------------------------------------------------
-vector<vector<int> > GeneratorSystemToPoints(Generator_System gs) {
-	vector<vector<int> > Result;
-	for (Generator_System::const_iterator i = gs.begin(),
-	gs_end = gs.end(); i != gs_end; ++i) {
-		Result.push_back(GeneratorToPoint(*i));
-	}
-	return Result;
 }
 
 //------------------------------------------------------------------------------
@@ -302,10 +283,9 @@ C_Polyhedron FindCPolyhedron(vector<vector<int> > Points) {
 	Generator_System gs;
 	vector<vector<int> >::iterator itr;
 	for (itr=Points.begin(); itr != Points.end(); itr++) {
-		vector<int> Point = *itr;
 		Linear_Expression LE;
-		for (size_t i = 0; i != Point.size(); i++) {
-			LE = LE + Variable(i) * (Point[i]);
+		for (size_t i = 0; i != (*itr).size(); i++) {
+			LE += Variable(i) * ((*itr)[i]);
 		};
 		gs.insert(point(LE));
 	};
