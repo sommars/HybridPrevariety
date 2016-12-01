@@ -26,13 +26,11 @@ int ConeIntersectionCount;
 inline list<Cone> DoCommonRefinement(int HullIndex, Cone &NewCone, vector<vector<Cone> > &HullCones) {
 	vector<Cone> *HIndex;
 	HIndex = &HullCones[HullIndex];
-	RelationTable *RT = &NewCone.RelationTables[HullIndex];
+	BitsetWithCount *RT = &NewCone.RelationTables[HullIndex];
 	list<Cone> Result;
 	Cone *ConeToTest;
-//	set<int>::iterator NextEdge;
-//	for (NextEdge = (*IntersectionIndices).begin(); NextEdge != (*IntersectionIndices).end(); NextEdge++) {
-	for (boost::dynamic_bitset<>::size_type j = 0; j != (*RT).IntersectionIndices.size(); j++) {
-		if (!(*RT).IntersectionIndices[j])
+	for (boost::dynamic_bitset<>::size_type j = 0; j != (*RT).Indices.size(); j++) {
+		if (!(*RT).Indices[j])
 			continue;
 		ConeToTest = &(*HIndex)[j];
 
@@ -48,14 +46,13 @@ inline list<Cone> DoCommonRefinement(int HullIndex, Cone &NewCone, vector<vector
 		if (HOPolyhedron.affine_dimension() > 0) {
 			Cone TestCone;
 			TestCone.HOPolyhedron = HOPolyhedron;
-			TestCone.PolytopesVisitedCount = NewCone.PolytopesVisitedCount;
-			vector<RelationTable> InitialSet1(HullCones.size());
-			TestCone.RelationTables = InitialSet1;
+			TestCone.PolytopesVisited.Count = NewCone.PolytopesVisited.Count;
+			TestCone.RelationTables.resize(HullCones.size());
 			TestCone.PolytopesVisited = NewCone.PolytopesVisited;
 			
 			
 			for (size_t i = 0; i != NewCone.RelationTables.size(); i++) {
-				if (!NewCone.PolytopesVisited[i]) {
+				if (!NewCone.PolytopesVisited.Indices[i]) {
 					clock_t SetIntersectBegin = clock();
 					TestCone.RelationTables[i] = IntersectRTs((*ConeToTest).RelationTables[i], NewCone.RelationTables[i]);
 					SetIntersectTime += double(clock() - SetIntersectBegin);
@@ -74,7 +71,7 @@ inline list<Cone> DynamicEnumerate(Cone &C, vector<vector<Cone> > &HullCones) {
 	int SmallestInt = 10000000;
 	int SmallestIndex = -1;
 	for (size_t i = 0; i != C.RelationTables.size(); i++) {
-		if ((!C.PolytopesVisited[i])
+		if ((!C.PolytopesVisited.Indices[i])
 		&& (C.RelationTables[i].Count < SmallestInt)) {
 			SmallestInt = C.RelationTables[i].Count;
 			SmallestIndex = i;
@@ -85,8 +82,8 @@ inline list<Cone> DynamicEnumerate(Cone &C, vector<vector<Cone> > &HullCones) {
 		cout << "Internal error: DynamicEnumerate had a value of -1 for SmallestIndex" << endl;
 		cin.get();
 	};
-	C.PolytopesVisited[SmallestIndex] = true;
-	C.PolytopesVisitedCount++;
+	C.PolytopesVisited.Indices[SmallestIndex] = 1;
+	C.PolytopesVisited.Count++;
 
 	return DoCommonRefinement(SmallestIndex, C, HullCones);
 };
@@ -229,7 +226,7 @@ void ThreadEnum(vector<vector<Cone> > HullCones, int ProcessID, int ProcessCount
 
 		// If there are remaining new cones, give them to the job queue.
 		if (ResultCones.size() > 0) {
-			int Index = ResultCones.front().PolytopesVisitedCount;
+			int Index = ResultCones.front().PolytopesVisited.Count;
 			
 			// The cones have visited all of the polytopes.
 			if (Index == HullCones.size()) {
@@ -355,14 +352,11 @@ int main(int argc, char* argv[]) {
 
 	for(size_t i = 0; i != HullCones.size(); i++){
 		for(size_t j = 0; j != HullCones[i].size(); j++){
-		
-			for (size_t k = 0; k != HullCones.size(); k++) {
-				RelationTable RT;
+			for(size_t k = 0; k != HullCones.size(); k++) {
+				BitsetWithCount RT;
+				RT.Indices.resize(HullCones[k].size());
 				RT.Count = 0;
 				HullCones[i][j].RelationTables.push_back(RT);
-				for(size_t l = 0; l != HullCones[k].size(); l++) {
-					HullCones[i][j].RelationTables[k].IntersectionIndices.push_back(0);
-				};
 			};
 		};
 	};
@@ -373,18 +367,17 @@ int main(int argc, char* argv[]) {
 	for(int i = 0; i != HullCones.size(); i++){
 		vector<Cone> Cones1 = HullCones[i];
 		for (size_t k = 0; k != HullCones[i].size(); k++) {
-			vector<bool> Temp(HullCones.size());
-			HullCones[i][k].PolytopesVisited = Temp;
-			HullCones[i][k].PolytopesVisited[i] = true;
-			HullCones[i][k].PolytopesVisitedCount = 1;
+			HullCones[i][k].PolytopesVisited.Indices.resize(HullCones.size());
+			HullCones[i][k].PolytopesVisited.Indices[i] = 1;
+			HullCones[i][k].PolytopesVisited.Count = 1;
 		};
 		for(size_t j = i+1; j != HullCones.size(); j++){
 			vector<Cone> Cones2 = HullCones[j];
 			for(size_t k = 0; k != Cones1.size(); k++){
 				for(size_t l = 0; l != Cones2.size(); l++){
 					if (IntersectCones(Cones1[k].HOPolyhedron, Cones2[l].HOPolyhedron).affine_dimension() >= 1) {
-						HullCones[i][k].RelationTables[j].IntersectionIndices[l] = 1;
-						HullCones[j][l].RelationTables[i].IntersectionIndices[k] = 1;
+						HullCones[i][k].RelationTables[j].Indices[l] = 1;
+						HullCones[j][l].RelationTables[i].Indices[k] = 1;
 						HullCones[i][k].RelationTables[j].Count++;
 						HullCones[j][l].RelationTables[i].Count++;
 					} else {
