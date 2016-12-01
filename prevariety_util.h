@@ -8,17 +8,16 @@ using namespace std;
 using namespace Parma_Polyhedra_Library;
 namespace Parma_Polyhedra_Library {using IO_Operators::operator<<;}
 
-struct RelationTable {
-	boost::dynamic_bitset<> IntersectionIndices; // 1 means that there is an intersection, 0 that there isn't
+struct BitsetWithCount {
+	boost::dynamic_bitset<> Indices; // 1 means that there is an intersection, 0 that there isn't
 	int Count;
 };
 
 class Cone {
 	public:
 		C_Polyhedron HOPolyhedron;
-		vector<RelationTable> RelationTables;
-		vector<bool> PolytopesVisited; // 1 means visited, 0 means unvisited
-		int PolytopesVisitedCount;
+		vector<BitsetWithCount> RelationTables;
+		BitsetWithCount PolytopesVisited;
 //	public:
 		//Cone(C_Polyhedron, int, int);
 //		Cone(int);
@@ -194,10 +193,6 @@ inline void PrintPoint(vector<bool> Point) {
 	cout << "}" << endl;
 };
 
-//------------------------------------------------------------------------------
-inline void PrintPoint(RelationTable RT) {
-	//PrintPoint(RT.IntersectionIndices);
-};
 
 //------------------------------------------------------------------------------
 void PrintPointsForPython(vector<vector<int> > Points);
@@ -240,11 +235,10 @@ inline bool SetsDoIntersect(set<int> &S1, set<int> &S2) {
 };
 
 //------------------------------------------------------------------------------
-inline RelationTable IntersectRTs(RelationTable R1, RelationTable &R2) {
-	RelationTable RT;
-	RT.IntersectionIndices = R1.IntersectionIndices&=R2.IntersectionIndices;
-	RT.Count = RT.IntersectionIndices.count();
-	return RT;
+inline BitsetWithCount IntersectRTs(BitsetWithCount R1, BitsetWithCount &R2) {
+	R1.Indices = R1.Indices&=R2.Indices;
+	R1.Count = R1.Indices.count();
+	return R1;
 };
 
 //------------------------------------------------------------------------------
