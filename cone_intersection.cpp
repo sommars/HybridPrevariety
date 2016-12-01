@@ -36,6 +36,8 @@ inline list<Cone> DoCommonRefinement(int HullIndex, Cone &NewCone, vector<vector
 
 		
 		clock_t IntBegin = clock();
+		if (NewCone.HOPolyhedron.is_disjoint_from((*ConeToTest).HOPolyhedron))
+			continue;
 		C_Polyhedron HOPolyhedron = IntersectCones((*ConeToTest).HOPolyhedron, NewCone.HOPolyhedron);
 		IntersectionTime += double(clock() - IntBegin);
 		
@@ -49,7 +51,6 @@ inline list<Cone> DoCommonRefinement(int HullIndex, Cone &NewCone, vector<vector
 			TestCone.PolytopesVisited.Count = NewCone.PolytopesVisited.Count;
 			TestCone.RelationTables.resize(HullCones.size());
 			TestCone.PolytopesVisited = NewCone.PolytopesVisited;
-			
 			
 			for (size_t i = 0; i != NewCone.RelationTables.size(); i++) {
 				if (!NewCone.PolytopesVisited.Indices[i]) {
@@ -237,22 +238,11 @@ void ThreadEnum(vector<vector<Cone> > HullCones, int ProcessID, int ProcessCount
 					
 					vector<int> ConeRayIndices;
 					int ConeDim = (*i).HOPolyhedron.affine_dimension();
-					Generator_System pregs = (*i).HOPolyhedron.generators();
-					Generator_System gs;
-					gs.insert(point(Variable(0)*0));
-					for (Generator_System::const_iterator gsi = pregs.begin(), gs_end = pregs.end(); gsi != gs_end; ++gsi) {
-						if ((*gsi).is_point() or (*gsi).is_closure_point())
+					//cout << (*i).HOPolyhedron.generators() << endl;
+					for (Generator_System::const_iterator gsi = (*i).HOPolyhedron.generators().begin(), gs_end = (*i).HOPolyhedron.generators().end(); gsi != gs_end; ++gsi) {
+						if ((*gsi).is_point() or (*gsi).is_closure_point() or (*gsi).coefficient(Variable((*gsi).space_dimension() -1)) != 0)
 							continue;
-						gs.insert(*gsi);
-					};
-					gs = C_Polyhedron(gs).minimized_generators(); // Should be a better way to do this...
-					for (Generator_System::const_iterator gsi = gs.begin(), gs_end = gs.end(); gsi != gs_end; ++gsi) {
-						if ((*gsi).is_point() or (*gsi).is_closure_point() or (*gsi).is_line())
-							continue;
-						vector<int> Ray = GeneratorToPoint(*gsi);
-						if (Ray.back() != 0)
-							continue;
-						Ray.pop_back();
+						vector<int> Ray = GeneratorToPoint(*gsi, true);
 						map<vector<int>, int>::iterator GSIt;
 						GSIt = Output.RayToIndexMap.find(Ray);
 						if (GSIt == Output.RayToIndexMap.end()) {
@@ -375,7 +365,7 @@ int main(int argc, char* argv[]) {
 			vector<Cone> Cones2 = HullCones[j];
 			for(size_t k = 0; k != Cones1.size(); k++){
 				for(size_t l = 0; l != Cones2.size(); l++){
-					if (IntersectCones(Cones1[k].HOPolyhedron, Cones2[l].HOPolyhedron).affine_dimension() >= 1) {
+					if (!Cones1[k].HOPolyhedron.is_disjoint_from(Cones2[l].HOPolyhedron)) {
 						HullCones[i][k].RelationTables[j].Indices[l] = 1;
 						HullCones[j][l].RelationTables[i].Indices[k] = 1;
 						HullCones[i][k].RelationTables[j].Count++;
