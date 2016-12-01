@@ -13,28 +13,11 @@ struct BitsetWithCount {
 	int Count;
 };
 
-class Cone {
-	public:
+struct Cone {
 		C_Polyhedron HOPolyhedron;
 		vector<BitsetWithCount> RelationTables;
 		BitsetWithCount PolytopesVisited;
-//	public:
-		//Cone(C_Polyhedron, int, int);
-//		Cone(int);
-//		Cone();
 };
-
-//Cone::Cone (int PolysVisitedCount) {
-//	PolytopesVisitedCount = PolysVisitedCount;
-//}
-/*
-Cone::Cone (C_Polyhedron HOPoly, int PolytopesCount, int PolysVisitedCount) {
-	HOPolyhedron = HOPoly;
-	PolytopesVisited(PolytopesCount, 0);
-	IntersectionIndices(PolytopesCount);
-	PolytopesVisitedCount = PolysVisitedCount;
-};
-*/
 
 struct Edge {
 	set<int> PointIndices;
@@ -91,10 +74,9 @@ struct ThreadJob {
 };
 
 //------------------------------------------------------------------------------
-inline NNC_Polyhedron IntersectCones(NNC_Polyhedron &ph1, NNC_Polyhedron &ph2) {
-	NNC_Polyhedron ph = ph1;
-	ph.add_constraints(ph2.constraints());
-	return ph;
+inline NNC_Polyhedron IntersectCones(NNC_Polyhedron ph1, NNC_Polyhedron &ph2) {
+	ph1.add_constraints(ph2.constraints());
+	return ph1;
 };
 
 //------------------------------------------------------------------------------
@@ -106,10 +88,7 @@ inline C_Polyhedron IntersectCones(C_Polyhedron &ph1, C_Polyhedron &ph2) {
 };
 
 //------------------------------------------------------------------------------
-vector<int> GeneratorToPoint(Generator g);
-
-//------------------------------------------------------------------------------
-vector<vector<int> > GeneratorSystemToPoints(Generator_System gs);
+vector<int> GeneratorToPoint(Generator g, bool KnockOffLastTerm);
 
 //------------------------------------------------------------------------------
 vector<int> ConstraintToPoint(Constraint c);
@@ -122,9 +101,6 @@ void FindFacets(Hull &H);
 
 //------------------------------------------------------------------------------
 void FindEdges(Hull &H);
-
-//------------------------------------------------------------------------------
-Constraint StrictInequalityToNonStrictInequality(Constraint c);
 
 //------------------------------------------------------------------------------
 vector<vector<int> > FindCandidateEdges(Hull H);
@@ -243,4 +219,3 @@ inline BitsetWithCount IntersectRTs(BitsetWithCount R1, BitsetWithCount &R2) {
 
 //------------------------------------------------------------------------------
 vector<vector<vector<int> > > ParseToSupport(string Input);
-
