@@ -1,9 +1,4 @@
 #include "polynomial_systems.h"
-#include <iostream>
-#include <list>
-#include <stdio.h>
-#include <string>
-#include <vector>
 
 //------------------------------------------------------------------------------
 vector<vector<vector<int> > > CyclicN(int n, bool Reduced) {
@@ -30,6 +25,18 @@ vector<vector<vector<int> > > CyclicN(int n, bool Reduced) {
 			};
 			Equation.push_back(Monomial);
 		};
+		System.push_back(Equation);
+	};
+	if (Reduced == false) {
+		vector<vector<int> > Equation;
+		vector<int> Monomial1;
+		vector<int> Monomial2;
+		for (size_t i = 0; i != n; i++) {
+			Monomial1.push_back(1);
+			Monomial2.push_back(0);
+		};
+		Equation.push_back(Monomial1);
+		Equation.push_back(Monomial2);
 		System.push_back(Equation);
 	};
 	return System;
