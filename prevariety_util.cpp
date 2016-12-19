@@ -1,13 +1,7 @@
 #include "prevariety_util.h"
-#include <iostream>
-#include <list>
-#include <stdio.h>
-#include <string>
-using namespace std;
-using namespace Parma_Polyhedra_Library;
-namespace Parma_Polyhedra_Library {using IO_Operators::operator<<;}
+
 //------------------------------------------------------------------------------
-vector<int> GeneratorToPoint(Generator g, bool KnockOffLastTerm) { //page 251
+vector<int> GeneratorToPoint(Generator g, bool KnockOffLastTerm) {
 	vector<int> Result;
 	int Dim = 0;
 	if (KnockOffLastTerm)
@@ -150,6 +144,13 @@ vector<Cone> NewHull(vector<vector<int> > Points, vector<double> VectorForOrient
 				NewCone.HOPolyhedron.minimized_constraints();
 				NewCone.HOPolyhedron.minimized_generators();
 				NewCone.HOPolyhedron.affine_dimension();
+				/*
+				cout << NewCone.Constraints << endl;
+				for (MIP_Problem::const_iterator i = NewCone.MP.constraints_begin(); i != NewCone.MP.constraints_end(); i++)
+					cout << (*i) << endl;
+				cout << endl << endl;
+				cin.get();
+				*/
 				OutputCones.push_back(NewCone);
 				//Introduce it as a strict inequality to describe the rest. Call recursively.
 				Constraints[j] = InequalityToStrictInequality(TempConstraint);
