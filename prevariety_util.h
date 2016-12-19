@@ -1,33 +1,30 @@
-#include <ppl.hh>
-#include <iostream>
-#include <list>
-#include <mutex>
-#include <boost/dynamic_bitset.hpp>
+#include "polynomial_systems.h"
 
-using namespace std;
-using namespace Parma_Polyhedra_Library;
-namespace Parma_Polyhedra_Library {using IO_Operators::operator<<;}
-
+//------------------------------------------------------------------------------
 struct BitsetWithCount {
 	boost::dynamic_bitset<> Indices; // 1 means that there is an intersection, 0 that there isn't
 	int Count;
 };
 
+//------------------------------------------------------------------------------
 struct Cone {
-		C_Polyhedron HOPolyhedron;
-		vector<BitsetWithCount> RelationTables;
-		BitsetWithCount PolytopesVisited;
+	vector<BitsetWithCount> RelationTables;
+	BitsetWithCount PolytopesVisited;
+	C_Polyhedron HOPolyhedron;
 };
 
+//------------------------------------------------------------------------------
 struct Edge {
 	set<int> PointIndices;
 	set<int> NeighborIndices;
 };
 
+//------------------------------------------------------------------------------
 struct Facet {
 	set<int> PointIndices;
 };
 
+//------------------------------------------------------------------------------
 struct Hull {
 	vector<vector<int> > Points;
 	map<vector<int>,int> PointToIndexMap;
@@ -40,21 +37,25 @@ struct Hull {
 	int SpaceDimension;
 };
 
+//------------------------------------------------------------------------------
 struct ConeWithIndicator {
 	vector<int> RayIndices;
 	bool IsMaximal;
 };
 
+//------------------------------------------------------------------------------
 inline bool operator== (const ConeWithIndicator & s1, const ConeWithIndicator & s2)
 {
     return  s1.RayIndices == s2.RayIndices;
 }
 
+//------------------------------------------------------------------------------
 inline bool operator< (const ConeWithIndicator & s1, const ConeWithIndicator & s2)
 {
     return  s1.RayIndices < s2.RayIndices;
 }
 
+//------------------------------------------------------------------------------
 struct TropicalPrevariety {
 	map<vector<int>, int> RayToIndexMap;
 	vector<set<ConeWithIndicator > > ConeTree;
@@ -63,6 +64,7 @@ struct TropicalPrevariety {
 	vector<int> FVector; // Consider ripping out
 };
 
+//------------------------------------------------------------------------------
 struct ThreadJob {
 	mutable mutex M;
 	vector<list<Cone> > SharedCones;
@@ -80,11 +82,10 @@ inline NNC_Polyhedron IntersectCones(NNC_Polyhedron ph1, NNC_Polyhedron &ph2) {
 };
 
 //------------------------------------------------------------------------------
-inline C_Polyhedron IntersectCones(C_Polyhedron &ph1, C_Polyhedron &ph2) {
-	C_Polyhedron ph = ph1;
-	ph.add_constraints(ph2.constraints());
-	ph.affine_dimension();
-	return ph;
+inline C_Polyhedron IntersectCones(C_Polyhedron ph1, C_Polyhedron &ph2) {
+	ph1.add_constraints(ph2.constraints());
+	ph1.affine_dimension();
+	return ph1;
 };
 
 //------------------------------------------------------------------------------
