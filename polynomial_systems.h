@@ -1,9 +1,8 @@
 #include <ppl.hh>
-#include <iostream>
-#include <list>
-#include <vector>
+#include <boost/dynamic_bitset.hpp>
+#include "Thread_Pool_defs.hh"
+
 using namespace std;
-using namespace Parma_Polyhedra_Library;
 namespace Parma_Polyhedra_Library {using IO_Operators::operator<<;}
 
 //------------------------------------------------------------------------------
