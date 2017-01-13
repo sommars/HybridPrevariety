@@ -144,6 +144,28 @@ vector<Cone> NewHull(vector<vector<int> > Points, vector<double> VectorForOrient
 				NewCone.HOPolyhedron.minimized_constraints();
 				NewCone.HOPolyhedron.minimized_generators();
 				NewCone.HOPolyhedron.affine_dimension();
+				
+				for (Constraint_System::const_iterator cc = NewCone.HOPolyhedron.constraints().begin(), cs_end = NewCone.HOPolyhedron.constraints().end(); cc != cs_end; cc++) {
+					DSVector NewRow(cc->space_dimension());
+					for (size_t jj = 0; jj < cc->space_dimension(); jj++) {
+						stringstream s;
+						s << cc->coefficient(Variable(jj));
+						int ToAppend;
+						istringstream(s.str()) >> ToAppend;
+						NewRow.add(jj,(double)ToAppend);
+					};
+					if (cc->is_equality()) {
+						NewCone.Rows.add(LPRow(0, NewRow, 0));
+					} else {
+						stringstream s;
+						s << cc->inhomogeneous_term();
+						int ToAppend;
+						istringstream(s.str()) >> ToAppend;
+						NewCone.Rows.add(LPRow(-1 * ToAppend, NewRow, infinity));
+					};
+				};
+				
+				
 				/*
 				cout << NewCone.Constraints << endl;
 				for (MIP_Problem::const_iterator i = NewCone.MP.constraints_begin(); i != NewCone.MP.constraints_end(); i++)
@@ -177,7 +199,7 @@ void FindFacets(Hull &H) {
 	for (Constraint_System::const_iterator i = cs.begin(),
 	cs_end = cs.end(); i != cs_end; ++i) {
 		
-		if (!(*i).is_inequality()) {
+		if (!i->is_inequality()) {
 			continue;
 		};
 		vector<int> Pt = ConstraintToPoint(*i);
@@ -207,7 +229,7 @@ void FindEdges(Hull &H) {
 	
 		int FacetCount = 0;
 		for (vector<Facet>::iterator FacetIt = H.Facets.begin(); FacetIt != H.Facets.end(); FacetIt++) {
-			set<int> PtIndices = (*FacetIt).PointIndices;
+			set<int> PtIndices = FacetIt->PointIndices;
 			bool Point1IsInFacet = PtIndices.find(Point1) != PtIndices.end();
 			bool Point2IsInFacet = PtIndices.find(Point2) != PtIndices.end();
 			if (Point1IsInFacet and Point2IsInFacet) {
@@ -285,7 +307,7 @@ C_Polyhedron FindCPolyhedron(vector<vector<int> > Points) {
 	vector<vector<int> >::iterator itr;
 	for (itr=Points.begin(); itr != Points.end(); itr++) {
 		Linear_Expression LE;
-		for (size_t i = 0; i != (*itr).size(); i++) {
+		for (size_t i = 0; i != itr->size(); i++) {
 			LE += Variable(i) * ((*itr)[i]);
 		};
 		gs.insert(point(LE));
