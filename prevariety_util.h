@@ -1,5 +1,7 @@
 #include "polynomial_systems.h"
 
+using namespace soplex;
+
 //------------------------------------------------------------------------------
 struct BitsetWithCount {
 	boost::dynamic_bitset<> Indices; // 1 means that there is an intersection, 0 that there isn't
@@ -11,6 +13,9 @@ struct Cone {
 	vector<BitsetWithCount> RelationTables;
 	BitsetWithCount PolytopesVisited;
 	C_Polyhedron HOPolyhedron;
+	LPRowSetReal Rows;
+	vector<int> PolytopesVisitedIndices;
+	vector<int> ConesVisitedIndices;
 };
 
 //------------------------------------------------------------------------------
