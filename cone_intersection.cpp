@@ -1,26 +1,27 @@
-#include "prevariety_util.h"
+#include "soplex_test.h"
 
 //double IntersectionTime, SetIntersectTime, CleanupTime, AffineDimTime, ConeCopyTime;
 int ConeIntersectionCount;
+double SoplexTime;
+bool UsePPL;
 
 //------------------------------------------------------------------------------
-list<Cone> DoCommonRefinement(int HullIndex, Cone &NewCone, vector<vector<Cone> > &HullCones) {
+list<Cone> DoCommonRefinement(int HullIndex, Cone &NewCone, vector<vector<Cone> > &HullCones, MySoPlex &MySop) {
 	vector<Cone> *HIndex;
 	HIndex = &HullCones[HullIndex];
 	BitsetWithCount *RT = &NewCone.RelationTables[HullIndex];
 	list<Cone> Result;
 	Cone *ConeToTest;
-	for (boost::dynamic_bitset<>::size_type j = 0; j != (*RT).Indices.size(); j++) {
-		if (!(*RT).Indices[j])
+	for (boost::dynamic_bitset<>::size_type j = 0; j != RT->Indices.size(); j++) {
+		if (!RT->Indices[j])
 			continue;
 		ConeToTest = &(*HIndex)[j];
 
 		bool SkipIntersection = false;
-
 		vector<BitsetWithCount> RelationTables(HullCones.size());
 		for (size_t i = 0; i != NewCone.RelationTables.size(); i++) {
 			if (!NewCone.PolytopesVisited.Indices[i]) {
-				RelationTables[i] = IntersectRTs((*ConeToTest).RelationTables[i], NewCone.RelationTables[i]);
+				RelationTables[i] = IntersectRTs(ConeToTest->RelationTables[i], NewCone.RelationTables[i]);
 				if (RelationTables[i].Count == 0) {
 					SkipIntersection = true;
 					break;
@@ -32,11 +33,27 @@ list<Cone> DoCommonRefinement(int HullIndex, Cone &NewCone, vector<vector<Cone> 
 			continue;
 		ConeIntersectionCount++;
 		Cone TestCone;
-		TestCone.RelationTables = RelationTables;
-		TestCone.HOPolyhedron = NewCone.HOPolyhedron;
-		TestCone.HOPolyhedron.add_constraints((*ConeToTest).HOPolyhedron.constraints());
-		if (TestCone.HOPolyhedron.is_empty())
+		bool ShouldContinue;
+		if (UsePPL) {
+			TestCone.HOPolyhedron = NewCone.HOPolyhedron;
+			TestCone.HOPolyhedron.add_constraints(ConeToTest->HOPolyhedron.constraints());
+			ShouldContinue = TestCone.HOPolyhedron.is_empty();
+		} else {
+			MySop.ClearLP();
+			for (size_t i = 0; i != NewCone.PolytopesVisitedIndices.size(); i++) {
+				MySop.AddRowsToLP(HullCones[NewCone.PolytopesVisitedIndices[i]][NewCone.ConesVisitedIndices[i]].Rows);
+			};
+			MySop.AddRowsToLP(HullCones[HullIndex][j].Rows);
+			ShouldContinue = !MySop.SoplexSaysIntersect();
+		};
+		if (ShouldContinue)
 			continue;
+		TestCone.PolytopesVisitedIndices = NewCone.PolytopesVisitedIndices;
+		TestCone.ConesVisitedIndices = NewCone.ConesVisitedIndices;
+		TestCone.PolytopesVisitedIndices.push_back(HullIndex);
+		TestCone.ConesVisitedIndices.push_back(j);
+		
+		TestCone.RelationTables = RelationTables;
 		TestCone.PolytopesVisited.Count = NewCone.PolytopesVisited.Count;
 		TestCone.PolytopesVisited = NewCone.PolytopesVisited;
 
@@ -46,7 +63,7 @@ list<Cone> DoCommonRefinement(int HullIndex, Cone &NewCone, vector<vector<Cone> 
 }
 
 //------------------------------------------------------------------------------
-inline list<Cone> DynamicEnumerate(Cone &C, vector<vector<Cone> > &HullCones) {
+inline list<Cone> DynamicEnumerate(Cone &C, vector<vector<Cone> > &HullCones, MySoPlex &MySop) {
 	// Figure out which polytope we want to pick
 	int SmallestInt = 10000000;
 	int SmallestIndex = -1;
@@ -65,7 +82,7 @@ inline list<Cone> DynamicEnumerate(Cone &C, vector<vector<Cone> > &HullCones) {
 	C.PolytopesVisited.Indices[SmallestIndex] = 1;
 	C.PolytopesVisited.Count++;
 
-	return DoCommonRefinement(SmallestIndex, C, HullCones);
+	return DoCommonRefinement(SmallestIndex, C, HullCones, MySop);
 };
 
 //------------------------------------------------------------------------------
@@ -84,7 +101,7 @@ void ParseToPrevariety(vector<int> &ConeRayIndices, int ConeDim, TropicalPrevari
 	if (CWIIt == Output.ConeTree[ConeDim - 1].end()) {
 		Output.ConeTree[ConeDim - 1].insert(CWI);
 	} else {
-		if ((*CWIIt).IsMaximal) {
+		if (CWIIt->IsMaximal) {
 			ConeWithIndicator CWITemp;
 			CWITemp.RayIndices = ConeRayIndices;
 			CWITemp.IsMaximal = false;
@@ -153,10 +170,11 @@ void ParseToPrevariety(vector<int> &ConeRayIndices, int ConeDim, TropicalPrevari
 };
 
 //------------------------------------------------------------------------------
-void ThreadEnum(vector<vector<Cone> > HullCones, int ProcessID, int ProcessCount, vector<ThreadJob> &ThreadJobs, vector<int> &BoredProcesses, TropicalPrevariety &Output, mutex &BPmtx, mutex &Outputmtx) {
+void ThreadEnum(vector<vector<Cone> > HullCones, int ProcessID, int ProcessCount, vector<ThreadJob> &ThreadJobs, vector<int> &BoredProcesses, TropicalPrevariety &Output, mutex &BPmtx, mutex &Outputmtx, MySoPlex MySop) {
 	vector<vector<int> > Pretropisms;
 	Cone C;
 	bool HasCone = false;
+	dimension_type dimtype = HullCones[0][0].HOPolyhedron.space_dimension();
 	ThreadJob *TJ;
 	while (true) {
 		int j = ProcessID;
@@ -166,23 +184,23 @@ void ThreadEnum(vector<vector<Cone> > HullCones, int ProcessID, int ProcessCount
 			int Incrementer;
 			TJ = &ThreadJobs[j % ProcessCount];
 			if (j == ProcessID) {
-				StartIndex = (*TJ).SharedCones.size() - 1;
+				StartIndex = TJ->SharedCones.size() - 1;
 				EndIndex = -1;
 				Incrementer = -1;
 			} else {
 				StartIndex = 0;
-				EndIndex = (*TJ).SharedCones.size();
+				EndIndex = TJ->SharedCones.size();
 				Incrementer = 1;
 			};
-			(*TJ).M.lock();
+			TJ->M.lock();
 			// If work stealing happens, we really want to steal the less traveled cones,
 			// not the more traveled cones. Need to rework that...somehow.
 			for (size_t i = StartIndex; i !=EndIndex; ) {
-				if ((*TJ).SharedCones[i].size() > 0) {
+				if (TJ->SharedCones[i].size() > 0) {
 			//		clock_t BEGIN = clock();
-					C = (*TJ).SharedCones[i].back();
+					C = TJ->SharedCones[i].back();
 			//		ConeCopyTime += double(clock() - BEGIN);
-					(*TJ).SharedCones[i].pop_back();
+					TJ->SharedCones[i].pop_back();
 					HasCone = true;
 					// This case happens when the process tried to steal from every process
 					// possible but did not succeed, which made it bored. It added itself
@@ -198,7 +216,7 @@ void ThreadEnum(vector<vector<Cone> > HullCones, int ProcessID, int ProcessCount
 				};
 				i+=Incrementer;
 			};
-			(*TJ).M.unlock();
+			TJ->M.unlock();
 			if (HasCone)
 				break;
 			// This case means that we spun through all of the other threads' queues
@@ -210,12 +228,14 @@ void ThreadEnum(vector<vector<Cone> > HullCones, int ProcessID, int ProcessCount
 				BPmtx.unlock();
 			};
 			if ((j % ProcessCount) == ProcessID) {
-				if (BoredProcesses[ProcessCount] == ProcessCount)
+				if (BoredProcesses[ProcessCount] == ProcessCount) {
+					SoplexTime += MySop.SoplexTime;
 					return;
+				};
 			};
 			j++;
 		};
-		list<Cone> ResultCones = DynamicEnumerate(C, HullCones);
+		list<Cone> ResultCones = DynamicEnumerate(C, HullCones, MySop);
 
 		// If there are remaining new cones, give them to the job queue.
 		if (ResultCones.size() > 0) {
@@ -228,10 +248,20 @@ void ThreadEnum(vector<vector<Cone> > HullCones, int ProcessID, int ProcessCount
 				list<Cone>::iterator i;
 				for (i = ResultCones.begin(); i != ResultCones.end(); i++) {
 					vector<int> ConeRayIndices;
-					int ConeDim = (*i).HOPolyhedron.affine_dimension();
+					Constraint_System cs;
+					C_Polyhedron HOPolyhedron(dimtype);
+					if (UsePPL) {
+						HOPolyhedron = i->HOPolyhedron;
+					} else {
+						for (size_t qq = 0; qq != i->PolytopesVisitedIndices.size(); qq++) {
+							HOPolyhedron.add_constraints(HullCones[i->PolytopesVisitedIndices[qq]][i->ConesVisitedIndices[qq]].HOPolyhedron.constraints());
+						};
+					};
+					int ConeDim = HOPolyhedron.affine_dimension();
 					//cout << (*i).HOPolyhedron.generators() << endl;
-					for (Generator_System::const_iterator gsi = (*i).HOPolyhedron.generators().begin(), gs_end = (*i).HOPolyhedron.generators().end(); gsi != gs_end; ++gsi) {
-						if ((*gsi).is_point() or (*gsi).is_closure_point() or (*gsi).coefficient(Variable((*gsi).space_dimension() -1)) != 0)
+					for (Generator_System::const_iterator gsi = HOPolyhedron.generators().begin(), gs_end = HOPolyhedron.generators().end(); gsi != gs_end; ++gsi) {
+						cout << (*gsi) << endl;
+						if (gsi->is_point() or gsi->is_closure_point() or gsi->coefficient(Variable(gsi->space_dimension() -1)) != 0)
 							continue;
 						vector<int> Ray = GeneratorToPoint(*gsi, true);
 						map<vector<int>, int>::iterator GSIt;
@@ -259,12 +289,12 @@ void ThreadEnum(vector<vector<Cone> > HullCones, int ProcessID, int ProcessCount
 				ResultCones.pop_back();
 				if (ResultCones.size() > 0) {
 					TJ = &ThreadJobs[ProcessID];
-					(*TJ).M.lock();
+					TJ->M.lock();
 					list<Cone>::iterator i;
 					for (i = ResultCones.begin(); i != ResultCones.end(); i++) {
-						(*TJ).SharedCones[Index - 1].push_back(*i);
+						TJ->SharedCones[Index - 1].push_back(*i);
 					};
-					(*TJ).M.unlock();
+					TJ->M.unlock();
 				};
 			};
 		} else
@@ -277,7 +307,8 @@ int main(int argc, char* argv[]) {
 	//clock_t StartTime = clock();
 	
 	bool Verbose;
-	
+	MySoPlex MySop;
+
 	double RandomSeed = time(NULL);
 	if (Verbose) {
 		cout << fixed << "Random seed value: " << RandomSeed << endl;
@@ -286,7 +317,7 @@ int main(int argc, char* argv[]) {
 	
 	int TotalProcessCount;
 	vector<vector<vector<int> > > PolynomialSystemSupport;
-	if (argc != 4) {
+	if (argc != 5) {
 		if (Verbose) {
 			cout << "Expected three arguments. Waiting for user input system..." << endl;
 		}
@@ -315,6 +346,7 @@ int main(int argc, char* argv[]) {
 			return 1;
 		};
 		Verbose = true;
+		UsePPL = atoi(argv[4]);
 	};
 	
 	vector<vector<Cone> > HullCones;
@@ -329,7 +361,7 @@ int main(int argc, char* argv[]) {
 	}
 	//double HullTime = double(clock() - StartTime);
 
-//	double PreintersectTime = 0;
+	double PreintersectTime = 0;
 
 	for(size_t i = 0; i != HullCones.size(); i++){
 		for(size_t j = 0; j != HullCones[i].size(); j++){
@@ -341,11 +373,19 @@ int main(int argc, char* argv[]) {
 			};
 		};
 	};
-//	clock_t PreintTimeStart = clock();
+	clock_t PreintTimeStart = clock();
+
 	int TotalInt = 0;
 	int NonInt = 0;
+	int Dim = HullCones[0][0].HOPolyhedron.space_dimension();
+	DSVector dummycol(0);
+	LPColSetReal Cols;
+	for (size_t i = 0; i != Dim; i++)
+		Cols.add(LPCol(0, dummycol, infinity, -infinity));
+	MySop.Columns = Cols;
+	DVector farkasx(MySop.numRowsReal());
 	// TODO: parallelize this.
-	
+	bool ConesIntersect;
 	for(int i = 0; i != HullCones.size(); i++){
 		vector<Cone> Cones1 = HullCones[i];
 		for (size_t k = 0; k != HullCones[i].size(); k++) {
@@ -357,7 +397,17 @@ int main(int argc, char* argv[]) {
 			vector<Cone> Cones2 = HullCones[j];
 			for(size_t k = 0; k != Cones1.size(); k++){
 				for(size_t l = 0; l != Cones2.size(); l++){
-					if (!Cones1[k].HOPolyhedron.is_disjoint_from(Cones2[l].HOPolyhedron)) {
+					if (UsePPL) {
+						ConesIntersect = !Cones1[k].HOPolyhedron.is_disjoint_from(Cones2[l].HOPolyhedron);
+					} else {
+						MySop.ClearLP();
+						MySop.AddRowsToLP(Cones1[k].Rows);
+						MySop.AddRowsToLP(Cones2[l].Rows);
+						ConesIntersect = MySop.SoplexSaysIntersect();
+						//if (!ConesIntersect) {
+							//if (MySop.getDualFarkasReal(farkasx);
+					};
+					if (ConesIntersect) {
 						HullCones[i][k].RelationTables[j].Indices[l] = 1;
 						HullCones[j][l].RelationTables[i].Indices[k] = 1;
 						HullCones[i][k].RelationTables[j].Count++;
@@ -373,10 +423,11 @@ int main(int argc, char* argv[]) {
 			printf("Finished level %d of pre-intersections.\n", i);
 		};
 	};
-	//PreintersectTime = double(clock() - PreintTimeStart);
+	//SoplexTime += MySop.SoplexTime;
+	PreintersectTime = double(clock() - PreintTimeStart);
 	if (Verbose) {
 		cout << "Total Intersections: " << TotalInt << ", Non Intersections: " << NonInt << endl;
-//		cout << "Preintersection time: " << PreintersectTime / CLOCKS_PER_SEC << endl;
+		cout << "Preintersection time: " << PreintersectTime / CLOCKS_PER_SEC << endl;
 	};
 	
 	
@@ -412,6 +463,8 @@ int main(int argc, char* argv[]) {
 	};
 
 	for (size_t i = 0; i != HullCones[SmallestIndex].size(); i++) {
+		HullCones[SmallestIndex][i].PolytopesVisitedIndices.push_back(SmallestIndex);
+		HullCones[SmallestIndex][i].ConesVisitedIndices.push_back(i);
 		ThreadJobs[i % TotalProcessCount].SharedCones[0].push_back(HullCones[SmallestIndex][i]);
 	};
 	
@@ -423,7 +476,7 @@ int main(int argc, char* argv[]) {
 	typedef function<void()> work_type;
 	Thread_Pool<work_type> thread_pool(TotalProcessCount);
 	for (size_t i = 0; i != TotalProcessCount; i++) {
-		work_type work = bind(ThreadEnum, HullCones, i, TotalProcessCount, ref(ThreadJobs), ref(BoredProcesses), ref(Output), ref(BPmtx), ref(Outputmtx));
+		work_type work = bind(ThreadEnum, HullCones, i, TotalProcessCount, ref(ThreadJobs), ref(BoredProcesses), ref(Output), ref(BPmtx), ref(Outputmtx), MySop);
 		thread_pool.submit(make_threadable(work));
 	}
 	// Wait for all workers to complete.
@@ -476,7 +529,7 @@ int main(int argc, char* argv[]) {
 	} else {
 		PrintPointsForPython(Output.Pretropisms);
 	};
-	
+	cout << "Soplex time: " << SoplexTime / CLOCKS_PER_SEC << endl;
 	if (Verbose) {
 		//cout << "Maximal cone count--------" << endl;
 		//PrintPoint(Output.FVector);
@@ -484,7 +537,8 @@ int main(int argc, char* argv[]) {
 		cout << "Pre intersections: " << TotalInt << endl;
 		cout << "Alg intersections: " << ConeIntersectionCount << endl;
 		cout << "Total intersections: " << TotalInt + ConeIntersectionCount << endl;
-		cout << "Number of pretropisms found: " << Output.Pretropisms.size() << endl;/*
+		cout << "Number of pretropisms found: " << Output.Pretropisms.size() << endl;
+		cout << "Preintersection time: " << PreintersectTime / CLOCKS_PER_SEC << endl;/*
 		cout << "AffineDim time: " << AffineDimTime / CLOCKS_PER_SEC << endl;
 		cout << "Hull time: " << HullTime / CLOCKS_PER_SEC << endl;
 		cout << "Intersection time: " << IntersectionTime / CLOCKS_PER_SEC << endl;
