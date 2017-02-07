@@ -13,9 +13,10 @@ struct Cone {
 	vector<BitsetWithCount> RelationTables;
 	BitsetWithCount PolytopesVisited;
 	C_Polyhedron HOPolyhedron;
-	LPRowSetReal Rows;
+	//LPRowSetReal Rows;
 	vector<int> PolytopesVisitedIndices;
 	vector<int> ConesVisitedIndices;
+	Constraint_System Constraints;
 };
 
 //------------------------------------------------------------------------------
@@ -91,6 +92,32 @@ inline C_Polyhedron IntersectCones(C_Polyhedron ph1, C_Polyhedron &ph2) {
 	ph1.add_constraints(ph2.constraints());
 	ph1.affine_dimension();
 	return ph1;
+};
+
+
+
+//------------------------------------------------------------------------------
+inline LPRowSetReal ConstraintSystemToSoplexRows(const Constraint_System &cs) {
+	LPRowSetReal Rows;
+	for (Constraint_System::const_iterator c = cs.begin(), cs_end = cs.end(); c != cs_end; c++) {
+		DSVector NewRow(c->space_dimension());
+		for (size_t i = 0; i < c->space_dimension(); i++) {
+			double val = raw_value(c->coefficient(Variable(i))).get_ui();
+			if (c->coefficient(Variable(i)) < 0)
+				val *= -1;
+			NewRow.add(i, val);
+		};
+		if (c->is_equality()) {
+			Rows.add(LPRow(0, NewRow, 0));
+		} else {
+			stringstream s;
+			s << c->inhomogeneous_term();
+			int ToAppend;
+			istringstream(s.str()) >> ToAppend;
+			Rows.add(LPRow(-1 * ToAppend, NewRow, infinity));
+		};
+	};
+	return Rows;
 };
 
 //------------------------------------------------------------------------------
