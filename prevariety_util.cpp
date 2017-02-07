@@ -144,35 +144,9 @@ vector<Cone> NewHull(vector<vector<int> > Points, vector<double> VectorForOrient
 				NewCone.HOPolyhedron.minimized_constraints();
 				NewCone.HOPolyhedron.minimized_generators();
 				NewCone.HOPolyhedron.affine_dimension();
-				
-				for (Constraint_System::const_iterator cc = NewCone.HOPolyhedron.constraints().begin(), cs_end = NewCone.HOPolyhedron.constraints().end(); cc != cs_end; cc++) {
-					DSVector NewRow(cc->space_dimension());
-					for (size_t jj = 0; jj < cc->space_dimension(); jj++) {
-						stringstream s;
-						s << cc->coefficient(Variable(jj));
-						int ToAppend;
-						istringstream(s.str()) >> ToAppend;
-						NewRow.add(jj,(double)ToAppend);
-					};
-					if (cc->is_equality()) {
-						NewCone.Rows.add(LPRow(0, NewRow, 0));
-					} else {
-						stringstream s;
-						s << cc->inhomogeneous_term();
-						int ToAppend;
-						istringstream(s.str()) >> ToAppend;
-						NewCone.Rows.add(LPRow(-1 * ToAppend, NewRow, infinity));
-					};
-				};
-				
-				
-				/*
-				cout << NewCone.Constraints << endl;
-				for (MIP_Problem::const_iterator i = NewCone.MP.constraints_begin(); i != NewCone.MP.constraints_end(); i++)
-					cout << (*i) << endl;
-				cout << endl << endl;
-				cin.get();
-				*/
+
+				//NewCone.Rows = ConstraintSystemToSoplexRows(NewCone.HOPolyhedron.constraints());
+				NewCone.Constraints = NewCone.HOPolyhedron.minimized_constraints();
 				OutputCones.push_back(NewCone);
 				//Introduce it as a strict inequality to describe the rest. Call recursively.
 				Constraints[j] = InequalityToStrictInequality(TempConstraint);
