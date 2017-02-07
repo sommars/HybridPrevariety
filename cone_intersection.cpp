@@ -2,13 +2,12 @@
 
 //double IntersectionTime, SetIntersectTime, CleanupTime, AffineDimTime, ConeCopyTime;
 int ConeIntersectionCount;
-double SoplexTime;
-bool UsePPL;
 
 //------------------------------------------------------------------------------
 list<Cone> DoCommonRefinement(int HullIndex, Cone &NewCone, vector<vector<Cone> > &HullCones, MySoPlex &MySop) {
 	vector<Cone> *HIndex;
 	HIndex = &HullCones[HullIndex];
+	NewCone.PolytopesVisitedIndices.push_back(HullIndex);
 	BitsetWithCount *RT = &NewCone.RelationTables[HullIndex];
 	list<Cone> Result;
 	Cone *ConeToTest;
@@ -32,60 +31,13 @@ list<Cone> DoCommonRefinement(int HullIndex, Cone &NewCone, vector<vector<Cone> 
 		if (SkipIntersection)
 			continue;
 		ConeIntersectionCount++;
-		Cone TestCone;
-		bool ShouldContinue;
-		if (UsePPL) {
-			TestCone.HOPolyhedron = NewCone.HOPolyhedron;
-			TestCone.HOPolyhedron.add_constraints(ConeToTest->Constraints);
-			ShouldContinue = TestCone.HOPolyhedron.is_empty();
-		} else {
-			MySop.ClearLP();
-		//	for (size_t i = 0; i != NewCone.PolytopesVisitedIndices.size(); i++) {
-		//		MySop.AddRowsToLP(HullCones[NewCone.PolytopesVisitedIndices[i]][NewCone.ConesVisitedIndices[i]].Rows);
-	//		};
-			MySop.AddRowsToLP(NewCone.Rows);
-			MySop.AddRowsToLP(HullCones[HullIndex][j].Rows);
-			ShouldContinue = !MySop.SoplexSaysIntersect();
-			if (!ShouldContinue) {
-				TestCone.MIP = NewCone.MIP;
-				TestCone.MIP.add_constraints(ConeToTest->Constraints);
-//				TestCone.HOPolyhedron = NewCone.HOPolyhedron;
-//				TestCone.HOPolyhedron.add_constraints(ConeToTest->Constraints);
-				// Reduce the MIP.
-				TestCone.MIP.is_satisfiable();
-//				TestCone.Rows = ConstraintSystemToSoplexRows(TestCone.HOPolyhedron.constraints());
-	
-				for (MIP_Problem::const_iterator c = TestCone.MIP.constraints_begin(); c != TestCone.MIP.constraints_end();c++) {
-					DSVector NewRow(c->space_dimension());
-					for (size_t i = 0; i < c->space_dimension(); i++) {
-						double val = raw_value(c->coefficient(Variable(i))).get_ui();
-						if (c->coefficient(Variable(i)) < 0)
-							val *= -1;
-						NewRow.add(i, val);
-					};
-					if (c->is_equality()) {
-						TestCone.Rows.add(LPRow(0, NewRow, 0));
-					} else {
-						stringstream s;
-						s << c->inhomogeneous_term();
-						int ToAppend;
-						istringstream(s.str()) >> ToAppend;
-						TestCone.Rows.add(LPRow(-1 * ToAppend, NewRow, infinity));
-					};
-				};
-				
-			};
-		};
-		if (ShouldContinue)
-			continue;
-		TestCone.PolytopesVisitedIndices = NewCone.PolytopesVisitedIndices;
-		TestCone.ConesVisitedIndices = NewCone.ConesVisitedIndices;
-		TestCone.PolytopesVisitedIndices.push_back(HullIndex);
-		TestCone.ConesVisitedIndices.push_back(j);
+		Cone TestCone = NewCone;
 		
+		TestCone.HOPolyhedron.add_constraints(ConeToTest->Constraints);
+		if (TestCone.HOPolyhedron.is_empty())
+			continue;
+		TestCone.ConesVisitedIndices.push_back(j);
 		TestCone.RelationTables = RelationTables;
-		TestCone.PolytopesVisited.Count = NewCone.PolytopesVisited.Count;
-		TestCone.PolytopesVisited = NewCone.PolytopesVisited;
 
 		Result.push_back(TestCone);
 	};
@@ -206,6 +158,7 @@ void ThreadEnum(vector<vector<Cone> > HullCones, int ProcessID, int ProcessCount
 	bool HasCone = false;
 	dimension_type dimtype = HullCones[0][0].HOPolyhedron.space_dimension();
 	ThreadJob *TJ;
+	stringstream s;
 	while (true) {
 		int j = ProcessID;
 		while (not HasCone) {
@@ -259,7 +212,10 @@ void ThreadEnum(vector<vector<Cone> > HullCones, int ProcessID, int ProcessCount
 			};
 			if ((j % ProcessCount) == ProcessID) {
 				if (BoredProcesses[ProcessCount] == ProcessCount) {
-					SoplexTime += MySop.SoplexTime;
+					ofstream myfile;
+					myfile.open("output" + to_string(ProcessID) + ".txt");
+					myfile << s.rdbuf();
+					myfile.close();
 					return;
 				};
 			};
@@ -273,45 +229,37 @@ void ThreadEnum(vector<vector<Cone> > HullCones, int ProcessID, int ProcessCount
 			
 			// The cones have visited all of the polytopes.
 			if (Index == HullCones.size()) {
-				Outputmtx.lock();
+				//Outputmtx.lock();
 			//	clock_t TimeStart = clock();
 				list<Cone>::iterator i;
 				for (i = ResultCones.begin(); i != ResultCones.end(); i++) {
 					vector<int> ConeRayIndices;
-					Constraint_System cs;
-					C_Polyhedron HOPolyhedron(dimtype);
-					if (UsePPL) {
-						HOPolyhedron = i->HOPolyhedron;
-					} else {
-						for (size_t qq = 0; qq != i->PolytopesVisitedIndices.size(); qq++) {
-							HOPolyhedron.add_constraints(HullCones[i->PolytopesVisitedIndices[qq]][i->ConesVisitedIndices[qq]].HOPolyhedron.constraints());
-						};
-					};
-					int ConeDim = HOPolyhedron.affine_dimension();
-					//cout << (*i).HOPolyhedron.generators() << endl;
-					for (Generator_System::const_iterator gsi = HOPolyhedron.generators().begin(), gs_end = HOPolyhedron.generators().end(); gsi != gs_end; ++gsi) {
-						// cout << (*gsi) << endl;
+					int ConeDim = i->HOPolyhedron.affine_dimension() - 1;
+					if (ConeDim == 0)
+						continue;
+					s << endl;
+					s << ConeDim << endl;
+					for (Generator_System::const_iterator gsi = i->HOPolyhedron.generators().begin(), gs_end = i->HOPolyhedron.generators().end(); gsi != gs_end; ++gsi) {
 						if (gsi->is_point() or gsi->is_closure_point() or gsi->coefficient(Variable(gsi->space_dimension() -1)) != 0)
 							continue;
 						vector<int> Ray = GeneratorToPoint(*gsi, true);
-						map<vector<int>, int>::iterator GSIt;
-						GSIt = Output.RayToIndexMap.find(Ray);
-						if (GSIt == Output.RayToIndexMap.end()) {
-							int NewIndex = Output.Pretropisms.size();
-							//ConeRayIndices.push_back(NewIndex);
-							Output.RayToIndexMap[Ray] = NewIndex;
-							//Output.IndexToGenMap[NewIndex] = (*gsi);
-							Output.Pretropisms.push_back(Ray);
-							//cout << (*gsi) << endl;
-						} else {
-						//	ConeRayIndices.push_back((*GSIt).second);
-						};
+						s << "{ ";
+							for (vector<int>::iterator it=Ray.begin(); it != Ray.end(); it++)
+								s << (*it) << " ";
+							s << "}" << endl;
+						if (gsi->is_line()) {
+							// If it's a line, print the ray that generates the other half.
+							s << "{ ";
+							for (vector<int>::iterator it=Ray.begin(); it != Ray.end(); it++)
+								s << (*it) * (-1) << " ";
+							s << "}" << endl;
+						}
 					};
 					//sort(ConeRayIndices.begin(), ConeRayIndices.end());
 					//ParseToPrevariety(ConeRayIndices, ConeDim, Output, true);
 				};
 		//		CleanupTime += double(clock() - TimeStart);
-				Outputmtx.unlock();
+				//Outputmtx.unlock();
 				HasCone = false;
 			} else {
 				// If there is at least one cone, hold onto it for the next round.
@@ -344,7 +292,7 @@ int main(int argc, char* argv[]) {
 	
 	int TotalProcessCount;
 	vector<vector<vector<int> > > PolynomialSystemSupport;
-	if (argc != 5) {
+	if (argc != 4) {
 		if (Verbose) {
 			cout << "Expected three arguments. Waiting for user input system..." << endl;
 		}
@@ -375,7 +323,6 @@ int main(int argc, char* argv[]) {
 			return 1;
 		};
 		Verbose = true;
-		UsePPL = atoi(argv[4]);
 	};
 	
 	vector<vector<Cone> > HullCones;
@@ -403,16 +350,15 @@ int main(int argc, char* argv[]) {
 	int TotalInt = 0;
 	int NonInt = 0;
 	int Dim = HullCones[0][0].HOPolyhedron.space_dimension();
-	DSVector dummycol(0);
-	LPColSetReal Cols;
-	for (size_t i = 0; i != Dim; i++)
-		Cols.add(LPCol(0, dummycol, infinity, -infinity));
+	//DSVector dummycol(0);
+	//LPColSetReal Cols;
+	//for (size_t i = 0; i != Dim; i++)
+	//	Cols.add(LPCol(0, dummycol, infinity, -infinity));
 
 	MySoPlex MySop;
-	MySop.Columns = Cols;
-	DVector farkasx(MySop.numRowsReal());
+	//MySop.Columns = Cols;
+	//DVector farkasx(MySop.numRowsReal());
 	// TODO: parallelize this.
-	bool ConesIntersect;
 	for(int i = 0; i != HullCones.size(); i++){
 		for (size_t k = 0; k != HullCones[i].size(); k++) {
 			HullCones[i][k].PolytopesVisited.Indices.resize(HullCones.size());
@@ -422,16 +368,7 @@ int main(int argc, char* argv[]) {
 		for(size_t j = i+1; j != HullCones.size(); j++){
 			for(size_t k = 0; k != HullCones[i].size(); k++){
 				for(size_t l = 0; l != HullCones[j].size(); l++){
-					if (UsePPL) {
-						ConesIntersect = !HullCones[i][k].HOPolyhedron.is_disjoint_from(HullCones[j][l].HOPolyhedron);
-					} else {
-						MySop.ClearLP();
-						MySop.AddRowsToLP(HullCones[i][k].Rows);
-						MySop.AddRowsToLP(HullCones[j][l].Rows);
-						ConesIntersect = MySop.SoplexSaysIntersect();
-						// Could do dual farkas test here
-					};
-					if (ConesIntersect) {
+					if (!HullCones[i][k].HOPolyhedron.is_disjoint_from(HullCones[j][l].HOPolyhedron)) {
 						HullCones[i][k].RelationTables[j].Indices[l] = 1;
 						HullCones[j][l].RelationTables[i].Indices[k] = 1;
 						HullCones[i][k].RelationTables[j].Count++;
@@ -552,7 +489,6 @@ int main(int argc, char* argv[]) {
 	} else {
 		PrintPointsForPython(Output.Pretropisms);
 	};
-	cout << "Soplex time: " << SoplexTime / CLOCKS_PER_SEC << endl;
 	if (Verbose) {
 		//cout << "Maximal cone count--------" << endl;
 		//PrintPoint(Output.FVector);
