@@ -243,7 +243,8 @@ void ThreadEnum(vector<vector<Cone> > HullCones, int ProcessID, int ProcessCount
 					for (Generator_System::const_iterator gsi = i->HOPolyhedron.generators().begin(), gs_end = i->HOPolyhedron.generators().end(); gsi != gs_end; ++gsi) {
 						if (gsi->is_point() or gsi->is_closure_point() or gsi->coefficient(Variable(gsi->space_dimension() -1)) != 0)
 							continue;
-						vector<int> Ray = GeneratorToPoint(*gsi, true);
+						Generator G = *gsi;
+						vector<int> Ray = GeneratorToPoint(G, true);
 						s << "{ ";
 							for (vector<int>::iterator it=Ray.begin(); it != Ray.end(); it++)
 								s << (*it) << " ";

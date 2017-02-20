@@ -123,7 +123,8 @@ void FindFacets(Hull &H) {
 		if (!i->is_inequality()) {
 			continue;
 		};
-		vector<int> Pt = ConstraintToPoint(*i);
+		Constraint C = *i;
+		vector<int> Pt = ConstraintToPoint(C);
 		vector<vector<int> > FacetPts = FindInitialForm(H.Points, Pt);
 		Facet F;
 		vector<vector<int> >::iterator itr;
