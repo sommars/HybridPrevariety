@@ -1,3 +1,5 @@
+// Assorted utility functions for computing prevarieties
+
 #include "printer.h"
 
 //------------------------------------------------------------------------------

@@ -1,3 +1,5 @@
+// Various print methods that are used or were used at one point.
+
 #include "polynomial_systems.h"
 
 //------------------------------------------------------------------------------
@@ -18,3 +20,5 @@ void PrintPointForPython(vector<int> &Point);
 //------------------------------------------------------------------------------
 void PrintPointsForPython(vector<vector<int> > &Points);
 
+//------------------------------------------------------------------------------
+void printLP(SPxLP &w);

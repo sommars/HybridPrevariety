@@ -8,7 +8,8 @@ using namespace soplex;
 namespace Parma_Polyhedra_Library {using IO_Operators::operator<<;}
 
 //------------------------------------------------------------------------------
-struct BitsetWithCount {
+struct BitsetWithCount
+{
    // Used for relation tables and for keeping track which
    // polytopes have been visited by a polytope.
    // As expected, 1 represents true, 0 represents false.
@@ -17,7 +18,8 @@ struct BitsetWithCount {
 };
 
 //------------------------------------------------------------------------------
-struct Cone {
+struct Cone
+{
    // This is the base object used in computation. They hold relation tables
    // and PPL C_Polyhedron.
    vector<BitsetWithCount> RelationTables;
@@ -27,18 +29,25 @@ struct Cone {
 };
 
 //------------------------------------------------------------------------------
-struct Edge {
+struct Edge
+{
+   // Represents an edge, used primarily for convex hull computations.
    set<int> PointIndices;
    set<int> NeighborIndices;
 };
 
 //------------------------------------------------------------------------------
-struct Facet {
+struct Facet
+{
+   // Represents a facet, used primarily for convex hull computations.
    set<int> PointIndices;
 };
 
 //------------------------------------------------------------------------------
-struct Hull {
+struct Hull
+{
+   // Convex hull object, used to create the initial set of cones for each
+   // polytope.
    vector<vector<int> > Points;
    map<vector<int>,int> PointToIndexMap;
    map<int,vector<int> > IndexToPointMap;
@@ -51,13 +60,17 @@ struct Hull {
 };
 
 //------------------------------------------------------------------------------
-struct ConeWithIndicator {
+struct ConeWithIndicator
+{
+   // Helper object used to aide in parsing output of algorithm
    vector<int> RayIndices;
    bool IsMaximal;
 };
 
 //------------------------------------------------------------------------------
-struct TropicalPrevariety {
+struct TropicalPrevariety
+{
+   // Output object
    map<vector<int>, int> RayToIndexMap;
    vector<set<ConeWithIndicator > > ConeTree;
    vector<vector<int> > Pretropisms; // Consider ripping out
@@ -66,7 +79,10 @@ struct TropicalPrevariety {
 };
 
 //------------------------------------------------------------------------------
-struct ThreadQueue {
+struct ThreadQueue
+{
+   // Thread Queue for parallel computation. Each thread has its own independent
+   // queue, which facilitates work stealing.
    mutable mutex M;
    vector<list<Cone> > SharedCones;
    ThreadQueue(vector<list<Cone> > ConeVector): SharedCones(ConeVector) {};
