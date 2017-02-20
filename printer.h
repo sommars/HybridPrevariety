@@ -1,19 +1,20 @@
-#include "printer.h"
+#include "polynomial_systems.h"
 
 //------------------------------------------------------------------------------
-vector<int> GeneratorToPoint(Generator g, bool KnockOffLastTerm);
+void PrintPoint(vector<int> &Point);
 
 //------------------------------------------------------------------------------
-Constraint InequalityToStrictInequality(Constraint c);
+void PrintPoints(vector<vector<int> > &Points);
 
 //------------------------------------------------------------------------------
-Constraint InequalityToEquation(Constraint c);
+void PrintPoint(set<int> &Point);
 
 //------------------------------------------------------------------------------
-vector<int> ConstraintToPoint(Constraint c);
+void PrintPoint(vector<bool> &Point);
 
 //------------------------------------------------------------------------------
-double DoubleInnerProduct(vector<int> V1, vector<double> V2);
+void PrintPointForPython(vector<int> &Point);
 
 //------------------------------------------------------------------------------
-vector<vector<vector<int> > > ParseToSupport(string Input);
+void PrintPointsForPython(vector<vector<int> > &Points);
+

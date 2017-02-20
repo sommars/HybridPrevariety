@@ -7,7 +7,6 @@ int ConeIntersectionCount;
 list<Cone> DoCommonRefinement(int HullIndex, Cone &NewCone, vector<vector<Cone> > &HullCones, MySoPlex &MySop) {
 	vector<Cone> *HIndex;
 	HIndex = &HullCones[HullIndex];
-	NewCone.PolytopesVisitedIndices.push_back(HullIndex);
 	BitsetWithCount *RT = &NewCone.RelationTables[HullIndex];
 	list<Cone> Result;
 	Cone *ConeToTest;
@@ -33,10 +32,9 @@ list<Cone> DoCommonRefinement(int HullIndex, Cone &NewCone, vector<vector<Cone> 
 		ConeIntersectionCount++;
 		Cone TestCone = NewCone;
 		
-		TestCone.HOPolyhedron.add_constraints(ConeToTest->Constraints);
+		TestCone.HOPolyhedron.add_constraints(ConeToTest->HOPolyhedron.constraints());
 		if (TestCone.HOPolyhedron.is_empty())
 			continue;
-		TestCone.ConesVisitedIndices.push_back(j);
 		TestCone.RelationTables = RelationTables;
 
 		Result.push_back(TestCone);
@@ -47,24 +45,27 @@ list<Cone> DoCommonRefinement(int HullIndex, Cone &NewCone, vector<vector<Cone> 
 //------------------------------------------------------------------------------
 inline list<Cone> DynamicEnumerate(Cone &C, vector<vector<Cone> > &HullCones, MySoPlex &MySop) {
 	// Figure out which polytope we want to pick
-	int SmallestInt = 10000000;
-	int SmallestIndex = -1;
-	for (size_t i = 0; i != C.RelationTables.size(); i++) {
-		if ((!C.PolytopesVisited.Indices[i])
-		&& (C.RelationTables[i].Count < SmallestInt)) {
-			SmallestInt = C.RelationTables[i].Count;
-			SmallestIndex = i;
-		};
-	};
+   bool HaveCandidatePolytope = false;
+   int SmallestInt;
+   int SmallestIndex;
+   for (size_t i = 0; i != C.RelationTables.size(); i++) {
+      if ((!C.PolytopesVisited.Indices[i])
+      && ((!HaveCandidatePolytope) || (C.RelationTables[i].Count < SmallestInt)))
+      {
+         SmallestInt = C.RelationTables[i].Count;
+         SmallestIndex = i;
+         HaveCandidatePolytope = true;
+      };
+   };
 
-	if (SmallestIndex == -1) {
-		cout << "Internal error: DynamicEnumerate had a value of -1 for SmallestIndex" << endl;
-		cin.get();
-	};
-	C.PolytopesVisited.Indices[SmallestIndex] = 1;
-	C.PolytopesVisited.Count++;
+   if (!HaveCandidatePolytope) {
+      cout << "Internal error: DynamicEnumerate did not find a next polytope to visit" << endl;
+      cin.get();
+   };
+   C.PolytopesVisited.Indices[SmallestIndex] = 1;
+   C.PolytopesVisited.Count++;
 
-	return DoCommonRefinement(SmallestIndex, C, HullCones, MySop);
+   return DoCommonRefinement(SmallestIndex, C, HullCones, MySop);
 };
 
 //------------------------------------------------------------------------------
@@ -152,12 +153,12 @@ void ParseToPrevariety(vector<int> &ConeRayIndices, int ConeDim, TropicalPrevari
 };
 
 //------------------------------------------------------------------------------
-void ThreadEnum(vector<vector<Cone> > HullCones, int ProcessID, int ProcessCount, vector<ThreadJob> &ThreadJobs, vector<int> &BoredProcesses, TropicalPrevariety &Output, mutex &BPmtx, mutex &Outputmtx, MySoPlex MySop) {
+void ThreadEnum(vector<vector<Cone> > HullCones, int ProcessID, int ProcessCount, vector<ThreadQueue> &ThreadQueues, vector<int> &BoredProcesses, TropicalPrevariety &Output, mutex &BPmtx, mutex &Outputmtx, MySoPlex MySop) {
 	vector<vector<int> > Pretropisms;
 	Cone C;
 	bool HasCone = false;
 	dimension_type dimtype = HullCones[0][0].HOPolyhedron.space_dimension();
-	ThreadJob *TJ;
+	ThreadQueue *TQ;
 	stringstream s;
 	while (true) {
 		int j = ProcessID;
@@ -165,25 +166,25 @@ void ThreadEnum(vector<vector<Cone> > HullCones, int ProcessID, int ProcessCount
 			int StartIndex;
 			int EndIndex;
 			int Incrementer;
-			TJ = &ThreadJobs[j % ProcessCount];
+			TQ = &ThreadQueues[j % ProcessCount];
 			if (j == ProcessID) {
-				StartIndex = TJ->SharedCones.size() - 1;
+				StartIndex = TQ->SharedCones.size() - 1;
 				EndIndex = -1;
 				Incrementer = -1;
 			} else {
 				StartIndex = 0;
-				EndIndex = TJ->SharedCones.size();
+				EndIndex = TQ->SharedCones.size();
 				Incrementer = 1;
 			};
-			TJ->M.lock();
+			TQ->M.lock();
 			// If work stealing happens, we really want to steal the less traveled cones,
 			// not the more traveled cones. Need to rework that...somehow.
 			for (size_t i = StartIndex; i !=EndIndex; ) {
-				if (TJ->SharedCones[i].size() > 0) {
+				if (TQ->SharedCones[i].size() > 0) {
 			//		clock_t BEGIN = clock();
-					C = TJ->SharedCones[i].back();
+					C = TQ->SharedCones[i].back();
 			//		ConeCopyTime += double(clock() - BEGIN);
-					TJ->SharedCones[i].pop_back();
+					TQ->SharedCones[i].pop_back();
 					HasCone = true;
 					// This case happens when the process tried to steal from every process
 					// possible but did not succeed, which made it bored. It added itself
@@ -199,7 +200,7 @@ void ThreadEnum(vector<vector<Cone> > HullCones, int ProcessID, int ProcessCount
 				};
 				i+=Incrementer;
 			};
-			TJ->M.unlock();
+			TQ->M.unlock();
 			if (HasCone)
 				break;
 			// This case means that we spun through all of the other threads' queues
@@ -266,13 +267,13 @@ void ThreadEnum(vector<vector<Cone> > HullCones, int ProcessID, int ProcessCount
 				C = ResultCones.back();
 				ResultCones.pop_back();
 				if (ResultCones.size() > 0) {
-					TJ = &ThreadJobs[ProcessID];
-					TJ->M.lock();
+					TQ = &ThreadQueues[ProcessID];
+					TQ->M.lock();
 					list<Cone>::iterator i;
 					for (i = ResultCones.begin(); i != ResultCones.end(); i++) {
-						TJ->SharedCones[Index - 1].push_back(*i);
+						TQ->SharedCones[Index - 1].push_back(*i);
 					};
-					TJ->M.unlock();
+					TQ->M.unlock();
 				};
 			};
 		} else
@@ -411,22 +412,19 @@ int main(int argc, char* argv[]) {
 		return 1;
 	};
 	
-	vector<ThreadJob> ThreadJobs;
+	vector<ThreadQueue> ThreadQueues;
 	for (size_t i = 0; i != TotalProcessCount; i++) {
 		vector<list<Cone> > SharedCones;
 		for (size_t i = 0; i != HullCones.size() - 1; i++) {
 			list<Cone> Temp;
 			SharedCones.push_back(Temp);
 		};
-		ThreadJob TJ(SharedCones);
-		ThreadJobs.push_back(TJ);
+		ThreadQueue TQ(SharedCones);
+		ThreadQueues.push_back(TQ);
 	};
 
-	for (size_t i = 0; i != HullCones[SmallestIndex].size(); i++) {
-		HullCones[SmallestIndex][i].PolytopesVisitedIndices.push_back(SmallestIndex);
-		HullCones[SmallestIndex][i].ConesVisitedIndices.push_back(i);
-		ThreadJobs[i % TotalProcessCount].SharedCones[0].push_back(HullCones[SmallestIndex][i]);
-	};
+	for (size_t i = 0; i != HullCones[SmallestIndex].size(); i++)
+		ThreadQueues[i % TotalProcessCount].SharedCones[0].push_back(HullCones[SmallestIndex][i]);
 	
 	mutex BPmtx;
 	mutex Outputmtx;
@@ -436,7 +434,7 @@ int main(int argc, char* argv[]) {
 	typedef function<void()> work_type;
 	Thread_Pool<work_type> thread_pool(TotalProcessCount);
 	for (size_t i = 0; i != TotalProcessCount; i++) {
-		work_type work = bind(ThreadEnum, HullCones, i, TotalProcessCount, ref(ThreadJobs), ref(BoredProcesses), ref(Output), ref(BPmtx), ref(Outputmtx), MySop);
+		work_type work = bind(ThreadEnum, HullCones, i, TotalProcessCount, ref(ThreadQueues), ref(BoredProcesses), ref(Output), ref(BPmtx), ref(Outputmtx), MySop);
 		thread_pool.submit(Parma_Polyhedra_Library::make_threadable(work));
 	}
 	// Wait for all workers to complete.

@@ -1,4 +1,4 @@
-#include "prevariety_util.h"
+#include "convex_hull.h"
 
 class MySoPlex : public SoPlex {
 private:
