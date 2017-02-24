@@ -63,19 +63,21 @@ struct Hull
 struct ConeWithIndicator
 {
    // Helper object used to aide in parsing output of algorithm
-   vector<int> RayIndices;
+   set<int> RayIndices;
    bool IsMaximal;
 };
 
 //------------------------------------------------------------------------------
-struct TropicalPrevariety
+class TropicalPrevariety
 {
-   // Output object
-   map<vector<int>, int> RayToIndexMap;
-   vector<set<ConeWithIndicator > > ConeTree;
-   vector<vector<int> > Pretropisms; // Consider ripping out
-   map<int, Generator> IndexToGenMap;
-   vector<int> FVector; // Consider ripping out
+   // TODO: This could probably be improved with sorting beforehand.
+   // Output object. Only outputs all the maximal cones.
+   public:
+      map<vector<int>, int> RayToIndexMap;
+      vector<vector<ConeWithIndicator > > ConeTree;
+      void MarkMaximalCones(void);
+      void PrintRayToIndexMap(void);
+      void PrintMaximalCones(void);
 };
 
 //------------------------------------------------------------------------------

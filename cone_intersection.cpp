@@ -1,6 +1,5 @@
 #include "soplex_test.h"
 
-//double IntersectionTime, SetIntersectTime, CleanupTime, AffineDimTime, ConeCopyTime;
 int ConeIntersectionCount;
 
 //------------------------------------------------------------------------------
@@ -84,115 +83,15 @@ inline list<Cone> DynamicEnumerate(
 };
 
 //------------------------------------------------------------------------------
-void ParseToPrevariety(
-   vector<int> &ConeRayIndices,
-   int ConeDim,
-   TropicalPrevariety &Output,
-   bool CouldBeMaximal)
-{
-   // Dynamically parses output of algorithm to create full prevariety.
-   while (Output.ConeTree.size() < ConeDim)
-   {
-      set<ConeWithIndicator> Temp;
-      Output.ConeTree.push_back(Temp);
-      Output.FVector.push_back(0);
-   };
-
-   ConeWithIndicator CWI;
-   CWI.IsMaximal = CouldBeMaximal;
-   CWI.RayIndices = ConeRayIndices;
-
-   set<ConeWithIndicator>::iterator CWIIt = find(
-      Output.ConeTree[ConeDim - 1].begin(),
-      Output.ConeTree[ConeDim - 1].end(), CWI);
-      
-   if (CWIIt == Output.ConeTree[ConeDim - 1].end())
-      Output.ConeTree[ConeDim - 1].insert(CWI);
-   else
-   {
-      if (CWIIt->IsMaximal)
-      {
-         ConeWithIndicator CWITemp;
-         CWITemp.RayIndices = ConeRayIndices;
-         CWITemp.IsMaximal = false;
-         Output.ConeTree[ConeDim - 1].erase(*CWIIt);
-         Output.ConeTree[ConeDim - 1].insert(CWITemp);
-      };
-      return;
-   };
-   if (ConeDim == ConeRayIndices.size())
-   {
-      // This is the easy case. We can recurse exactly as we would want to.
-      if (CWIIt == Output.ConeTree[ConeDim - 1].end())
-      {
-         if (ConeDim == 1)
-            return;
-         for (size_t i = 0; i != ConeRayIndices.size(); i++)
-         {
-            vector<int> ToRecurse;
-            for (size_t j = 0; j != ConeRayIndices.size(); j++)
-            {
-               if (i != j)
-                  ToRecurse.push_back(ConeRayIndices[j]);
-            };
-            ParseToPrevariety(ToRecurse, ConeDim - 1, Output, false);
-         };
-      }
-   } else {
-/*      vector<Generator> Gens;
-      Generator_System gs;
-      for (size_t i = 0; i != ConeRayIndices.size(); i++)
-      {
-         Gens.push_back(Output.IndexToGenMap[ConeRayIndices[i]]);
-         gs.insert(Output.IndexToGenMap[ConeRayIndices[i]]);
-      };
-      Linear_Expression LE;
-      for (size_t i = 0; i != Gens[0].space_dimension(); i++)
-         LE += Variable(i) * 0;
-      Generator ZeroPoint = point(LE); // Is this necessary? Could this just be point(0)?
-      gs.insert(ZeroPoint);
-      NNC_Polyhedron InitialPoly(gs);
-      
-      vector<Constraint> Inequalities;
-      Constraint_System Equalities;
-      for (Constraint_System::const_iterator i = InitialPoly.constraints().begin(),
-      cs_end = InitialPoly.constraints().end(); i != cs_end; ++i)
-      {
-         if ((*i).is_equality())
-            Equalities.insert(*i);
-         else
-            Inequalities.push_back(*i);
-      };
-      for (size_t i = 0; i != Inequalities.size(); i++) {
-         Constraint_System cs = Equalities;
-         for (size_t j = 0; j != Inequalities.size(); j++) {
-            if (i != j)
-               cs.insert(Inequalities[j]);
-         };
-         NNC_Polyhedron TempPoly(cs);
-         vector<int> TempConeRayIndices;
-         for (Generator_System::const_iterator gsi = TempPoly.generators().begin(), gs_end = TempPoly.generators().end(); gsi != gs_end; ++gsi) {
-            if ((*gsi).is_point() or (*gsi).is_closure_point())
-               continue;
-            // TODO!!!! If a value isn't defined, the map outputs 0 instead of throwing an error!
-            TempConeRayIndices.push_back(Output.RayToIndexMap[GeneratorToPoint(*gsi)]);
-         };
-         sort(TempConeRayIndices.begin(), TempConeRayIndices.end());
-         ParseToPrevariety(TempConeRayIndices, TempPoly.affine_dimension(), Output, false);
-      };*/
-   };
-};
-
-//------------------------------------------------------------------------------
-void ThreadEnum(
+int ThreadEnum(
    vector<vector<Cone> > HullCones,
    int ProcessID,
    int ProcessCount,
    vector<ThreadQueue> &ThreadQueues,
    vector<int> &BoredProcesses,
    TropicalPrevariety &Output,
-   mutex &BPmtx,
-   mutex &Outputmtx,
+   mutex &BPMtx,
+   mutex &OutputMtx,
    MySoPlex MySop)
 {
    // Manages work stealing and dishing out jobs from thread queues.
@@ -200,7 +99,6 @@ void ThreadEnum(
    Cone C;
    bool HasCone = false;
    ThreadQueue *TQ;
-   stringstream s;
    while (true)
    {
       int j = ProcessID;
@@ -237,10 +135,10 @@ void ThreadEnum(
                // bored process.
                if (j > (ProcessID + ProcessCount))
                {
-                  BPmtx.lock();
+                  BPMtx.lock();
                   BoredProcesses[ProcessID] = 0;
                   BoredProcesses[ProcessCount] -= 1;
-                  BPmtx.unlock();
+                  BPMtx.unlock();
                };
                break;
             };
@@ -253,20 +151,16 @@ void ThreadEnum(
          // and they were all empty. Now we need to make the process bored.
          if (j == ProcessCount + ProcessID)
          {
-            BPmtx.lock();
+            BPMtx.lock();
             BoredProcesses[ProcessID] = 0;
             BoredProcesses[ProcessCount] += 1;
-            BPmtx.unlock();
+            BPMtx.unlock();
          };
          if ((j % ProcessCount) == ProcessID)
          {
             if (BoredProcesses[ProcessCount] == ProcessCount)
             {
-               ofstream myfile;
-               myfile.open("output" + to_string(ProcessID) + ".txt");
-               myfile << s.rdbuf();
-               myfile.close();
-               return;
+               return 1;
             };
          };
          j++;
@@ -284,12 +178,11 @@ void ThreadEnum(
             list<Cone>::iterator i;
             for (i = ResultCones.begin(); i != ResultCones.end(); i++)
             {
-               vector<int> ConeRayIndices;
                int ConeDim = i->HOPolyhedron.affine_dimension() - 1;
                if (ConeDim == 0)
                   continue;
-               s << endl;
-               s << ConeDim << endl;
+               ConeWithIndicator CWI;
+               CWI.IsMaximal = true;
                for (Generator_System::const_iterator gsi = 
                        i->HOPolyhedron.generators().begin(),
                        gs_end = i->HOPolyhedron.generators().end();
@@ -300,29 +193,44 @@ void ThreadEnum(
                   || gsi->is_closure_point() 
                   || gsi->coefficient(Variable(gsi->space_dimension() -1)) != 0)
                      continue;
+                     
                   Generator G = *gsi;
                   vector<int> Ray = GeneratorToPoint(G, true);
-                  s << "{ ";
-                     for (vector<int>::iterator it=Ray.begin();
-                          it != Ray.end();
-                          it++)
-                     {
-                        s << (*it) << " ";
-                     }
-                     s << "}" << endl;
-                  if (gsi->is_line())
+                  OutputMtx.lock();
+                  clock_t FindStart = clock();
+                  map<vector<int>, int>::iterator itr = Output.RayToIndexMap.find(Ray);
+                  if (itr == Output.RayToIndexMap.end())
                   {
-                     // If it's a line, print the other ray
-                     s << "{ ";
-                     for (vector<int>::iterator it=Ray.begin();
-                          it != Ray.end();
-                          it++)
+                     Output.RayToIndexMap[Ray] = Output.RayToIndexMap.size();
+                     CWI.RayIndices.insert(Output.RayToIndexMap.size());
+                  } else
+                     CWI.RayIndices.insert(itr->second);
+                  OutputMtx.unlock();
+                  
+                  if (gsi->is_line()) {
+                     // If it's a line, we have to add both rays that make it up
+                     for(size_t j = 0; j != Ray.size(); j++)
+                        Ray[j] = -1 * Ray[j];
+                     
+                     OutputMtx.lock();
+                     map<vector<int>, int>::iterator itr2 = Output.RayToIndexMap.find(Ray);
+                     if (itr2 == Output.RayToIndexMap.end())
                      {
-                        s << (*it) * (-1) << " ";
-                     }
-                     s << "}" << endl;
+                        Output.RayToIndexMap[Ray] = Output.RayToIndexMap.size();
+                        CWI.RayIndices.insert(Output.RayToIndexMap.size());
+                     } else
+                        CWI.RayIndices.insert(itr2->second);
+                     OutputMtx.unlock();
                   }
                };
+               OutputMtx.lock();
+               while (Output.ConeTree.size() < (ConeDim))
+               {
+                  vector<ConeWithIndicator> Temp;
+                  Output.ConeTree.push_back(Temp);
+               };
+               Output.ConeTree[ConeDim - 1].push_back(CWI);
+               OutputMtx.unlock();
             };
             HasCone = false;
          } else {
@@ -456,7 +364,7 @@ int main(int argc, char* argv[])
    if (Verbose)
    {
       cout << "Total Intersections: " << TotalInt << endl;
-      cout << ", Non Intersections: " << NonInt << endl;
+      cout << "Non Intersections: " << NonInt << endl;
       PreintersectTime = PreintersectTime / CLOCKS_PER_SEC;
       cout << "Preintersection time: " << PreintersectTime << endl;
    };
@@ -502,16 +410,15 @@ int main(int argc, char* argv[])
       ThreadQueues[i % TotalProcessCount].SharedCones[0].push_back(
          HullCones[SmallestIndex][i]);
    
-   mutex BPmtx;
-   mutex Outputmtx;
+   mutex BPMtx;
+   mutex OutputMtx;
    TropicalPrevariety Output;
    vector<int> BoredProcesses (TotalProcessCount + 1, 0);
    clock_t AlgorithmStartTime = clock();
-   typedef function<void()> work_type;
-   Thread_Pool<work_type> thread_pool(TotalProcessCount);
+   Thread_Pool<function<int()>> thread_pool(TotalProcessCount);
    for (size_t i = 0; i != TotalProcessCount; i++)
    {
-      work_type work = bind(
+      thread_pool.submit(make_threadable(bind(
          ThreadEnum,
          HullCones,
          i,
@@ -519,10 +426,9 @@ int main(int argc, char* argv[])
          ref(ThreadQueues),
          ref(BoredProcesses),
          ref(Output),
-         ref(BPmtx),
-         ref(Outputmtx),
-         MySop);
-      thread_pool.submit(Parma_Polyhedra_Library::make_threadable(work));
+         ref(BPMtx),
+         ref(OutputMtx),
+         MySop)));
    }
    
    // Wait for all workers to complete.
@@ -535,33 +441,17 @@ int main(int argc, char* argv[])
       else
          this_thread::sleep_for(chrono::milliseconds(10));
    };
-   
-   cout << "Cone intersection count: " << ConeIntersectionCount << endl;
-   
-   sort(Output.Pretropisms.begin(), Output.Pretropisms.end());
-   if (Verbose)
-      PrintPoints(Output.Pretropisms);
-   else
-      PrintPointsForPython(Output.Pretropisms);
+   clock_t MarkingTimeStart = clock();
+   Output.MarkMaximalCones();
+   double MarkingTime = double(clock() - MarkingTimeStart) / CLOCKS_PER_SEC;
+   Output.PrintRayToIndexMap();
+   Output.PrintMaximalCones();
    if (Verbose)
    {
-      //cout << "Maximal cone count--------" << endl;
-      //PrintPoint(Output.FVector);
-      //PrintPoint(TotalVec);
-      cout << "Pre intersections: " << TotalInt << endl;
+      cout << "Intersections for building RT: " << TotalInt << endl;
       cout << "Alg intersections: " << ConeIntersectionCount << endl;
       cout << "Total intersections: " << TotalInt + ConeIntersectionCount << endl;
-      cout << "Number of pretropisms found: " << Output.Pretropisms.size() << endl;
-      cout << "Preintersection time: " << PreintersectTime << endl;/*
-      cout << "AffineDim time: " << AffineDimTime / CLOCKS_PER_SEC << endl;
-      cout << "Hull time: " << HullTime / CLOCKS_PER_SEC << endl;
-      cout << "Intersection time: " << IntersectionTime / CLOCKS_PER_SEC << endl;
-      cout << "Cleanup time: " << CleanupTime / CLOCKS_PER_SEC << endl;
-      cout << "Preintersection time: " << PreintersectTime / CLOCKS_PER_SEC << endl;
-      cout << "Set intersect time: " << SetIntersectTime / CLOCKS_PER_SEC << endl;
-      cout << "Time after end of alg: " << double(clock() - TimeAfterEndOfAlg) / CLOCKS_PER_SEC << endl;
-      cout << "Algorithm total time: " << AlgorithmTotalTime / CLOCKS_PER_SEC << endl;
-      cout << "Cone copy time: " << ConeCopyTime / CLOCKS_PER_SEC << endl;
-      cout << "Alg time - cone int time - set int time: " << (AlgorithmTotalTime - IntersectionTime - SetIntersectTime) / CLOCKS_PER_SEC << endl;*/
+      cout << "Preintersection time: " << PreintersectTime << endl;
+      cout << "Marking time: " << MarkingTime << endl;
    };
 }
