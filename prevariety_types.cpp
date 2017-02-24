@@ -1,7 +1,7 @@
 #include "prevariety_types.h"
 
 //------------------------------------------------------------------------------
-bool Set1IsSubsetOfSet2(set<int> &S1, set<int> &S2)
+inline bool Set1IsSubsetOfSet2(set<int> &S1, set<int> &S2)
 {
    // Tests if S1 is a subset of S2;
    set<int>::iterator S1Itr = S1.begin();
@@ -29,6 +29,9 @@ bool Set1IsSubsetOfSet2(set<int> &S1, set<int> &S2)
 //------------------------------------------------------------------------------
 void TropicalPrevariety::MarkMaximalCones(void)
 {
+   if (ConeTree.size() < 2)
+      return;
+      
    // All of the highest dimensional cones must be maximal,
    // so should start at second highest dimension
    for(size_t i = ConeTree.size() - 2; i != -1; i--)
@@ -58,6 +61,9 @@ void TropicalPrevariety::MarkMaximalCones(void)
 //------------------------------------------------------------------------------
 void TropicalPrevariety::PrintRayToIndexMap(void)
 {
+   // Prints ray to index map. Necessary for interpreting output.
+   if (RayToIndexMap.size() != 0)
+      cout << "------ Rays  ------"<< endl;
    for(map<vector<int>, int>::iterator itr = RayToIndexMap.begin();
        itr != RayToIndexMap.end();
        ++itr)
@@ -76,7 +82,7 @@ void TropicalPrevariety::PrintMaximalCones(void)
    for (size_t i = 0; i != ConeTree.size(); i++)
    {
       if (ConeTree[i].size() > 0)
-         cout << "------ Cones of dimension " << i << " ------"<< endl;
+         cout << "------ Cones of dimension " << i + 1 << " ------"<< endl;
       for (size_t j = 0; j != ConeTree[i].size(); j++)
       {
          if (!ConeTree[i][j].IsMaximal)

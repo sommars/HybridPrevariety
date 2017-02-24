@@ -207,11 +207,8 @@ void FindEdges(Hull &H)
             H.Edges[Edge1Index].NeighborIndices.insert(Edge2Index);
             H.Edges[Edge2Index].NeighborIndices.insert(Edge1Index);
          } else if (IntersectionCount > 1)
-         {
-            cout << "Internal Error: ";
-            cout << "Two edges intersect at more than one point" << endl;
-            cin.get();
-         }
+            throw runtime_error("Internal error: FindEdges found two edges"
+                                "that intersect at more than one point");
       };
    };
 }

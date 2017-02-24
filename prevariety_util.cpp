@@ -62,10 +62,8 @@ double DoubleInnerProduct(vector<int> &V1, vector<double> &V2)
 {
    // Computes the inner product of two vectors.
    if (V1.size() != V2.size())
-   {
-      cout << "Internal Error: InnerProduct with different sizes" << endl;
-      cin.get();
-   };
+      throw out_of_range("Internal error: DoubleInnerProduct for vectors"
+                             "with different sizes");
    double Result = 0;
    for (size_t i = 0; i != V1.size(); i++)
       Result += V1[i] * V2[i];
