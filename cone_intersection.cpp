@@ -88,10 +88,9 @@ void ThreadEnum(
    int ProcessID,
    int ProcessCount,
    vector<ThreadQueue> &ThreadQueues,
-   vector<int> &BoredProcesses,
    TropicalPrevariety &Output,
-   mutex &BPMtx,
-   mutex &OutputMtx)
+   mutex &OutputMtx,
+   int &FinishedProcessCount)
 {
    // Manages work stealing and dishing out jobs from thread queues.
    vector<vector<int> > Pretropisms;
@@ -134,10 +133,7 @@ void ThreadEnum(
                // bored process.
                if (j > (ProcessID + ProcessCount))
                {
-                  BPMtx.lock();
-                  BoredProcesses[ProcessID] = 0;
-                  BoredProcesses[ProcessCount] -= 1;
-                  BPMtx.unlock();
+                  FinishedProcessCount -= 1;
                };
                break;
             };
@@ -150,17 +146,12 @@ void ThreadEnum(
          // and they were all empty. Now we need to make the process bored.
          if (j == ProcessCount + ProcessID)
          {
-            BPMtx.lock();
-            BoredProcesses[ProcessID] = 0;
-            BoredProcesses[ProcessCount] += 1;
-            BPMtx.unlock();
+            FinishedProcessCount += 1;
          };
          if ((j % ProcessCount) == ProcessID)
          {
-            if (BoredProcesses[ProcessCount] == ProcessCount)
-            {
+            if (FinishedProcessCount == ProcessCount)
                return;
-            };
          };
          j++;
       };
@@ -365,12 +356,11 @@ int main(int argc, char* argv[])
       if (Verbose)
          printf("Finished level %d of pre-intersections.\n", i);
    };
-   double PreintersectTime = double(clock() - PreintTimeStart);
+   double PreintersectTime = double(clock() - PreintTimeStart) / CLOCKS_PER_SEC;
    if (Verbose)
    {
       cout << "Total Intersections: " << TotalInt << endl;
       cout << "Non Intersections: " << NonInt << endl;
-      PreintersectTime = PreintersectTime / CLOCKS_PER_SEC;
       cout << "Preintersection time: " << PreintersectTime << endl;
    };
    
@@ -418,34 +408,27 @@ int main(int argc, char* argv[])
    mutex BPMtx;
    mutex OutputMtx;
    TropicalPrevariety Output;
-   vector<int> BoredProcesses (ProcessCount + 1, 0);
    clock_t AlgorithmStartTime = clock();
-   Thread_Pool<function<void()>> thread_pool(ProcessCount);
-   
-   for (size_t i = 0; i != ProcessCount; i++)
    {
-      thread_pool.submit(make_threadable(bind(
-         ThreadEnum,
-         HullCones,
-         i,
-         ProcessCount,
-         ref(ThreadQueues),
-         ref(BoredProcesses),
-         ref(Output),
-         ref(BPMtx),
-         ref(OutputMtx))));
+      Thread_Pool<function<void()>> thread_pool(ProcessCount);
+      int FinishedProcessCount = 0;
+      for (size_t i = 0; i != ProcessCount; i++)
+      {
+         thread_pool.submit(make_threadable(bind(
+            ThreadEnum,
+            HullCones,
+            i,
+            ProcessCount,
+            ref(ThreadQueues),
+            ref(Output),
+            ref(OutputMtx),
+            ref(FinishedProcessCount))));
+      }
+      
+      // Wait for all workers to complete.
+      thread_pool.finalize();
    }
    
-   // Wait for all workers to complete.
-   thread_pool.finalize();
-   
-   //There has to be a better way to do this...
-   while (true) {
-      if (BoredProcesses[ProcessCount] == ProcessCount)
-         break;
-      else
-         this_thread::sleep_for(chrono::milliseconds(10));
-   };
    clock_t MarkingTimeStart = clock();
    Output.MarkMaximalCones();
    double MarkingTime = double(clock() - MarkingTimeStart) / CLOCKS_PER_SEC;
