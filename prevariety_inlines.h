@@ -1,30 +1,6 @@
 // Various functions that ought to be inlined
 
 //------------------------------------------------------------------------------
-inline bool operator== (
-   const ConeWithIndicator & s1, const ConeWithIndicator & s2)
-{
-   // Test equality of two ConeWithIndicator
-   return  s1.RayIndices == s2.RayIndices;
-}
-
-//------------------------------------------------------------------------------
-inline bool operator< (
-   const ConeWithIndicator & s1, const ConeWithIndicator & s2)
-{
-   // Test < for two ConeWithIndicator
-   return  s1.RayIndices < s2.RayIndices;
-}
-
-//------------------------------------------------------------------------------
-inline NNC_Polyhedron IntersectCones(NNC_Polyhedron ph1, NNC_Polyhedron &ph2)
-{
-   // Intersect NNC_Polyhedron
-   ph1.add_constraints(ph2.constraints());
-   return ph1;
-};
-
-//------------------------------------------------------------------------------
 inline C_Polyhedron IntersectCones(C_Polyhedron ph1, C_Polyhedron &ph2)
 {
    // Intersect C_Polyhedron
@@ -149,3 +125,29 @@ inline BitsetWithCount IntersectRTs(BitsetWithCount R1, BitsetWithCount &R2)
    R1.Count = R1.Indices.count();
    return R1;
 };
+
+//------------------------------------------------------------------------------
+inline bool Set1IsSubsetOfSet2(set<int> &S1, set<int> &S2)
+{
+   // Tests if S1 is a subset of S2;
+   set<int>::iterator S1Itr = S1.begin();
+   set<int>::iterator S2Itr = S2.begin();
+   while ((S1Itr != S1.end()) && (S2Itr != S2.end()))
+   {
+      if (*S1Itr < *S2Itr)
+         return false;
+      else if (*S2Itr<*S1Itr)
+         ++S2Itr;
+      else 
+      {
+         S1Itr++;
+         S2Itr++;
+      };
+   };
+   
+   // If S2 is at the end and there still are elements in S1, then false
+   if ((S1Itr != S1.end()) && (S2Itr == S2.end()))
+      return false;
+   else
+      return true;
+}

@@ -1,4 +1,4 @@
-#include "soplex_test.h"
+#include "process_output.h"
 
 int ConeIntersectionCount;
 
@@ -172,7 +172,7 @@ void ThreadEnum(
                if (ConeDim == 0)
                   continue;
                ConeWithIndicator CWI;
-               CWI.IsMaximal = true;
+               CWI.Status = 2;
                for (Generator_System::const_iterator gsi = 
                        i->HOPolyhedron.generators().begin(),
                        gs_end = i->HOPolyhedron.generators().end();
@@ -429,17 +429,21 @@ int main(int argc, char* argv[])
       thread_pool.finalize();
    }
    
+   clock_t SortingTimeStart = clock();
+   //Output.SortConeTree();
+   double SortingTime = double(clock() - SortingTimeStart) / CLOCKS_PER_SEC;
+   
+   
    clock_t MarkingTimeStart = clock();
-   Output.MarkMaximalCones();
+   MarkMaximalCones(Output, ProcessCount);
    double MarkingTime = double(clock() - MarkingTimeStart) / CLOCKS_PER_SEC;
    
-   // Using an if statement to surpress a warning.
-   if (freopen("output.txt","w",stdout) == 0)
-      throw runtime_error("Internal error: could not redirect stdout to file.");
-      
-   clock_t OutputPrintTimeStart = clock();
-   Output.PrintRayToIndexMap();
-   Output.PrintMaximalCones();
+   clock_t PrintingTimeStart = clock();
+   StreamRayToIndexMap(Output, s);
+   PrintMaximalCones(Output, s);
+   cout << s.str();
+   double PrintingTime = double(clock() - PrintingTimeStart) / CLOCKS_PER_SEC;
+   
    if (true)
    {
       cout << "------ Run data ------" << endl;
@@ -449,9 +453,9 @@ int main(int argc, char* argv[])
            << TotalInt + ConeIntersectionCount << endl;
       cout << "Preintersection time: " << PreintersectTime << endl;
       cout << "Marking time: " << MarkingTime << endl;
+      cout << "Sorting time: " << SortingTime << endl;
       cout << "Pretropisms: " << Output.RayToIndexMap.size() << endl;
-      cout << "Output print time: " 
-           << double(clock() - OutputPrintTimeStart) / CLOCKS_PER_SEC << endl;
+      cout << "Output Printing time: " << PrintingTime << endl;
    };
    fclose(stdout);
 }

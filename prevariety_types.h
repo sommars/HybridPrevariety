@@ -64,20 +64,20 @@ struct ConeWithIndicator
 {
    // Helper object used to aide in parsing output of algorithm
    set<int> RayIndices;
-   bool IsMaximal;
+   int Status;
+   // 0 means that this cone is NOT maximal.
+   // 1 means that this cone is maximal.
+   // 2 means that this cone's status is unknown, and it is not being followed.
+   // 3 means that this cone is currently being followed.
 };
 
 //------------------------------------------------------------------------------
-class TropicalPrevariety
+struct TropicalPrevariety
 {
    // TODO: This could probably be improved with sorting beforehand.
    // Output object. Only outputs all the maximal cones.
-   public:
-      map<vector<int>, int> RayToIndexMap;
-      vector<vector<ConeWithIndicator > > ConeTree;
-      void MarkMaximalCones(void);
-      void PrintRayToIndexMap(void);
-      void PrintMaximalCones(void);
+   map<vector<int>, int> RayToIndexMap;
+   vector<vector<ConeWithIndicator > > ConeTree;
 };
 
 //------------------------------------------------------------------------------
@@ -94,3 +94,14 @@ struct ThreadQueue
    };
 };
 
+//------------------------------------------------------------------------------
+struct OutputProcessor
+{
+   stringstream s;
+   mutable mutex M;
+   int level;
+   OutputProcessor(int x): level(x) {};
+   OutputProcessor(const OutputProcessor& OP) {
+      lock_guard<mutex> lock(OP.M);
+   }; 
+};
