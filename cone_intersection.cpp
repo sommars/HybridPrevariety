@@ -439,9 +439,12 @@ int main(int argc, char* argv[])
    double MarkingTime = double(clock() - MarkingTimeStart) / CLOCKS_PER_SEC;
    
    clock_t PrintingTimeStart = clock();
+   stringstream s;
    StreamRayToIndexMap(Output, s);
    PrintMaximalCones(Output, s);
-   cout << s.str();
+   ofstream OutFile ("output.txt");
+   OutFile << s.str();
+   OutFile.close();
    double PrintingTime = double(clock() - PrintingTimeStart) / CLOCKS_PER_SEC;
    
    if (true)

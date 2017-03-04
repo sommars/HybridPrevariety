@@ -127,6 +127,9 @@ void printLP(SPxLP &w)
 //------------------------------------------------------------------------------
 void PrintMaximalCones(TropicalPrevariety &TP, stringstream &s)
 {
+   if (TP.ConeTree.size() == 0)
+      return;
+   
    // Prints maximal cones from prevariety object.
    for (size_t i = 0; i != TP.ConeTree.size() - 1; i++)
    {
@@ -146,8 +149,12 @@ void PrintMaximalCones(TropicalPrevariety &TP, stringstream &s)
       };
    };
    int Dim = TP.ConeTree.size() - 1;
-   if (Dim > 0)
-         s << "------ Cones of dimension " << Dim + 1 << " ------"<< endl;
+   
+   if (Dim < 0)
+      return;
+      
+   s << "------ Cones of dimension " << Dim + 1 << " ------"<< endl;
+   
    for (size_t j = 0; j != TP.ConeTree[Dim].size(); j++)
    {
       set<int>::iterator it;
