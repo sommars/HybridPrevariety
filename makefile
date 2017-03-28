@@ -3,7 +3,7 @@ CFLAGS = -O3 -std=c++11
 ALLOC = libtcmalloc_minimal.so.4.2.6
 SOPLEX = /home/jeff/Desktop/Software/soplex-2.2.1/lib/libsoplex.linux.x86_64.gnu.opt.a
 PPLLINKEDFILES = -lppl -lgmpxx -lgmp -lz
-OBJ = prevariety_types.o polynomial_systems.o printer.o prevariety_util.o convex_hull.o soplex_test.o process_output.o cone_intersection.o
+OBJ = prevariety_types.o polynomial_systems.o printer.o prevariety_util.o convex_hull.o soplex_test.o process_output.o relation_tables.o cone_intersection.o
 
 all: prevariety
 
@@ -30,6 +30,9 @@ soplex_test.o: soplex_test.cpp soplex_test.h
 
 process_output.o: process_output.cpp process_output.h
 	$(CC) $(CFLAGS) -c process_output.cpp
+
+relation_tables.o: relation_tables.cpp relation_tables.h
+	$(CC) $(CFLAGS) -c relation_tables.cpp
    
 cone_intersection.o: cone_intersection.cpp
 	$(CC) $(CFLAGS) -c cone_intersection.cpp

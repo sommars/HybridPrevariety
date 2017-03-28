@@ -1,4 +1,4 @@
-#include "process_output.h"
+#include "relation_tables.h"
 
 int ConeIntersectionCount;
 
@@ -245,6 +245,9 @@ void ThreadEnum(
 //------------------------------------------------------------------------------
 int main(int argc, char* argv[])
 {
+
+   struct timeval AlgStartTime, AlgEndTime;
+   gettimeofday(&AlgStartTime, NULL);
    // Main program for computing tropical prevarieties.
    bool Verbose = false;
 
@@ -262,10 +265,11 @@ int main(int argc, char* argv[])
          cout << "Expected three arguments. "
                  "Waiting for user input system..." << endl;
       };
-      ProcessCount = 1;
       string input;
       cin >> input;
-      PolynomialSystemSupport = ParseToSupport(input);
+      ProcessCount = stoi(input.substr(0,2));
+      string SupportString = input.substr(2);
+      PolynomialSystemSupport = ParseToSupport(SupportString);
       Verbose = false;
    } else {
       int n = atoi(argv[1]);
@@ -280,17 +284,17 @@ int main(int argc, char* argv[])
          throw invalid_argument("The only supported systems are: "
                                  "reducedcyclicn, cyclicn, or random.");
       ProcessCount = atoi(argv[3]);
-      if (ProcessCount > thread::hardware_concurrency())
-      {
-         string ThreadErrorMsg = "Internal error: hardware_concurrency = "
-                                 + to_string(thread::hardware_concurrency())
-                                 + " but ProcessCount = " 
-                                 + to_string(ProcessCount);
-         throw invalid_argument(ThreadErrorMsg);
-      };
       Verbose = false;
    };
    
+   if (ProcessCount > thread::hardware_concurrency())
+   {
+      string ThreadErrorMsg = "Internal error: hardware_concurrency = "
+                              + to_string(thread::hardware_concurrency())
+                              + " but ProcessCount = " 
+                              + to_string(ProcessCount);
+      throw invalid_argument(ThreadErrorMsg);
+   };
    vector<vector<Cone> > HullCones;
    vector<double> VectorForOrientation;
    for (size_t i = 0; i != PolynomialSystemSupport[0][0].size(); i++)
@@ -312,58 +316,37 @@ int main(int argc, char* argv[])
    };
 
    // Correctly size relation tables
+   vector<vector<vector<BitsetWithCount> > > RTs;
    for(size_t i = 0; i != HullCones.size(); i++)
    {
+      vector<vector<BitsetWithCount> > RTs1;
       for(size_t j = 0; j != HullCones[i].size(); j++)
       {
+         vector<BitsetWithCount> RTs2;
          for(size_t k = 0; k != HullCones.size(); k++)
          {
             BitsetWithCount RT;
             RT.Indices.resize(HullCones[k].size());
             RT.Count = 0;
             HullCones[i][j].RelationTables.push_back(RT);
+            BitsetWithCount RT2;
+            RT2.Indices.resize(HullCones[k].size());
+            RT2.Count = 0;
+            RTs2.push_back(RT2);
          };
+         RTs1.push_back(RTs2);
       };
+      RTs.push_back(RTs1);
    };
    
-   clock_t PreintTimeStart = clock();
+   
+   struct timeval PreIntStartTime, PreIntEndTime;
+   gettimeofday(&PreIntStartTime, NULL);
+   int TotalInt = MarkRelationTables(HullCones, RTs, ProcessCount);
+   gettimeofday(&PreIntEndTime, NULL);
+   double PreintersectTime = ((PreIntEndTime.tv_sec  - PreIntStartTime.tv_sec) * 1000000u + 
+         PreIntEndTime.tv_usec - PreIntStartTime.tv_usec) / 1.e6;
 
-   int TotalInt = 0;
-   int NonInt = 0;
-   int Dim = HullCones[0][0].HOPolyhedron.space_dimension();
-   // TODO: parallelize this.
-   for(int i = 0; i != HullCones.size(); i++)
-   {
-      for(size_t j = i+1; j != HullCones.size(); j++)
-      {
-         for(size_t k = 0; k != HullCones[i].size(); k++)
-         {
-            for(size_t l = 0; l != HullCones[j].size(); l++)
-            {
-               if (!HullCones[i][k].HOPolyhedron.is_disjoint_from(
-                   HullCones[j][l].HOPolyhedron))
-               {
-                  HullCones[i][k].RelationTables[j].Indices[l] = 1;
-                  HullCones[j][l].RelationTables[i].Indices[k] = 1;
-                  HullCones[i][k].RelationTables[j].Count++;
-                  HullCones[j][l].RelationTables[i].Count++;
-               } else
-                  NonInt++;
-               TotalInt++;
-            };
-         };
-      };
-      if (Verbose)
-         printf("Finished level %d of pre-intersections.\n", i);
-   };
-   double PreintersectTime = double(clock() - PreintTimeStart) / CLOCKS_PER_SEC;
-   if (Verbose)
-   {
-      cout << "Total Intersections: " << TotalInt << endl;
-      cout << "Non Intersections: " << NonInt << endl;
-      cout << "Preintersection time: " << PreintersectTime << endl;
-   };
-   
    // Pick which polytope to start with. Initialize to the first polytope
    int SmallestInt = 0;
    int SmallestIndex = 0;
@@ -440,14 +423,28 @@ int main(int argc, char* argv[])
    
    clock_t PrintingTimeStart = clock();
    stringstream s;
-   StreamRayToIndexMap(Output, s);
-   PrintMaximalCones(Output, s);
+   //StreamRayToIndexMap(Output, s);
+  // PrintMaximalCones(Output, s);
+  
+   gettimeofday(&AlgEndTime, NULL);
+   double TotalAlgTime = ((AlgEndTime.tv_sec  - AlgStartTime.tv_sec) * 1000000u + 
+         AlgEndTime.tv_usec - AlgStartTime.tv_usec) / 1.e6;
+   s << "------ Run data ------" << endl;
+   s << "Intersections for building RT: " << TotalInt << endl;
+   s << "Alg intersections: " << ConeIntersectionCount << endl;
+   s << "Total intersections: "
+     << TotalInt + ConeIntersectionCount << endl;
+   s << "Preintersection time: " << PreintersectTime << endl;
+   s << "Marking time: " << MarkingTime << endl;
+   s << "Sorting time: " << SortingTime << endl;
+   s << "Pretropisms: " << Output.RayToIndexMap.size() << endl;
+   s << "Total Alg time: " << TotalAlgTime << endl;
    ofstream OutFile ("output.txt");
    OutFile << s.str();
    OutFile.close();
    double PrintingTime = double(clock() - PrintingTimeStart) / CLOCKS_PER_SEC;
    
-   if (true)
+   if (false)
    {
       cout << "------ Run data ------" << endl;
       cout << "Intersections for building RT: " << TotalInt << endl;
@@ -459,6 +456,6 @@ int main(int argc, char* argv[])
       cout << "Sorting time: " << SortingTime << endl;
       cout << "Pretropisms: " << Output.RayToIndexMap.size() << endl;
       cout << "Output Printing time: " << PrintingTime << endl;
+      cout << "Total Alg time: " << TotalAlgTime << endl;
    };
-   fclose(stdout);
 }

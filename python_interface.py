@@ -28,15 +28,21 @@
 
 from subprocess import Popen, PIPE
 #Modify the below line for your own machine
-pathToPrevariety = "/home/jeff/Desktop/HybridPrevariety/"
+pathToPrevariety = "/home/jeff/HybridPrevariety/"
 
-def TropicalPrevariety(support):
+def TropicalPrevariety(support, ProcessCount = 1):
 	support = str(support)
 	support = support.replace("], ", "]")
 	support = support.replace(" ","")
+	if ProcessCount < 10:
+	   support = '0' + str(ProcessCount) + support
+	else: 
+	   support = str(ProcessCount) + support
+	
 	prevariety = Popen(
-		pathToPrevariety + "prevariety.out", stdin=PIPE, stdout=PIPE, stderr=PIPE, shell=true)
+		pathToPrevariety + "prevariety", stdin=PIPE, stdout=PIPE, stderr=PIPE, shell=true)
 	ans, err = prevariety.communicate(input = support)
-	if len(ans) > 0 and ans[0] != '[':
-		raise Exception("Internal error in tropical_prevariety")
-	return eval(ans)
+	print(ans)
+	#if len(ans) > 0 and ans[0] != '[':
+	#	raise Exception("Internal error in tropical_prevariety")
+	return

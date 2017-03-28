@@ -71,10 +71,10 @@ void MarkMaximalCones(TropicalPrevariety &TP, int ProcessCount)
       mutex ConeMtx;
       for (size_t i = 0; i != ProcessCount; i++)
       {
-         thread_pool.submit(make_threadable(bind(
+         thread_pool.submit(bind(
             ParallelMarking,
             ref(TP),
-            ref(ConeMtx))));
+            ref(ConeMtx)));
       }
       
       // Wait for all workers to complete.
