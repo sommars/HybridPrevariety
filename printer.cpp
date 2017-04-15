@@ -177,3 +177,15 @@ void StreamPoint(set<int> &Point, stringstream &s)
       s << (*it) << " ";
    s << "}" << endl;
 };
+
+//------------------------------------------------------------------------------
+void PrintRT(vector<BitsetWithCount> &RT)
+{
+
+cout << endl;
+   for (size_t i = 0; i != RT.size(); i++)
+   {
+      cout << RT[i].Indices << endl;
+   };
+cout << endl;
+};

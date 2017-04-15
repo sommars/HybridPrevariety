@@ -127,6 +127,26 @@ inline BitsetWithCount IntersectRTs(BitsetWithCount R1, BitsetWithCount &R2)
 };
 
 //------------------------------------------------------------------------------
+inline BitsetWithCount ORRTs(BitsetWithCount R1, BitsetWithCount &R2)
+{
+   // ORs two relation tables and correctly establishes the 
+   // count property
+   R1.Indices = R1.Indices|=R2.Indices;
+   R1.Count = R1.Indices.count();
+   return R1;
+};
+
+//------------------------------------------------------------------------------
+inline vector<BitsetWithCount> ORFullRTS(vector<BitsetWithCount> R1, vector<BitsetWithCount> &R2, BitsetWithCount PolytopesVisited)
+{
+   for (size_t i = 0; i != R1.size(); i++)
+   {
+      R1[i] = ORRTs(R1[i],R2[i]);
+   };
+   return R1;
+};
+
+//------------------------------------------------------------------------------
 inline bool Set1IsSubsetOfSet2(set<int> &S1, set<int> &S2)
 {
    // Tests if S1 is a subset of S2;

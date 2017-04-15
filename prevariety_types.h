@@ -41,6 +41,7 @@ struct Facet
 {
    // Represents a facet, used primarily for convex hull computations.
    set<int> PointIndices;
+   vector<int> Normal;
 };
 
 //------------------------------------------------------------------------------

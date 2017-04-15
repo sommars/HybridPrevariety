@@ -39,12 +39,14 @@ list<Cone> DoCommonRefinement(
       
       if (SkipIntersection)
          continue;
+         
       ConeIntersectionCount++;
       Cone TestCone = NewCone;
       TestCone.HOPolyhedron.add_constraints(
          ConeToTest->HOPolyhedron.constraints());
       if (TestCone.HOPolyhedron.is_empty())
          continue;
+         
       TestCone.RelationTables = RelationTables;
 
       Result.push_back(TestCone);
@@ -171,8 +173,11 @@ void ThreadEnum(
                int ConeDim = i->HOPolyhedron.affine_dimension() - 1;
                if (ConeDim == 0)
                   continue;
+               
                ConeWithIndicator CWI;
                CWI.Status = 2;
+               
+              cout << i->HOPolyhedron.generators() << endl;
                for (Generator_System::const_iterator gsi = 
                        i->HOPolyhedron.generators().begin(),
                        gs_end = i->HOPolyhedron.generators().end();
@@ -181,7 +186,8 @@ void ThreadEnum(
                {
                   if (gsi->is_point() 
                   || gsi->is_closure_point() 
-                  || gsi->coefficient(Variable(gsi->space_dimension() -1)) != 0)
+                  //|| gsi->coefficient(Variable(gsi->space_dimension() -1)) != 0
+                  )
                      continue;
                      
                   Generator G = *gsi;
@@ -257,8 +263,9 @@ int main(int argc, char* argv[])
    srand(RandomSeed);
    
    int ProcessCount;
+   bool DoMixedVol = false;
    vector<vector<vector<int> > > PolynomialSystemSupport;
-   if (argc != 4)
+   if (argc < 3)
    {
       if (Verbose)
       {
@@ -280,11 +287,31 @@ int main(int argc, char* argv[])
          PolynomialSystemSupport = CyclicN(n, false);
       else if (SystemName == "random")
          PolynomialSystemSupport = RandomSimplices(n);
+      else if (SystemName == "minors")
+         PolynomialSystemSupport = FourByFourMinors(0);
+      else if (SystemName == "viviani")
+         PolynomialSystemSupport = Viviani(0);
+      else if (SystemName == "hiddenray")
+         PolynomialSystemSupport = HiddenRay(0);
       else
          throw invalid_argument("The only supported systems are: "
-                                 "reducedcyclicn, cyclicn, or random.");
+                                "reducedcyclicn, cyclicn, random, minors, viviani, and hiddenray.");
       ProcessCount = atoi(argv[3]);
       Verbose = false;
+      if ((argc >= 5) and (atoi(argv[4]) == 1))
+         DoMixedVol = true;
+   };
+
+   if (DoMixedVol)
+   {
+      for (size_t i = 0; i != PolynomialSystemSupport.size(); i++)
+      {
+         for (size_t j = 0; j != PolynomialSystemSupport[i].size(); j++)
+         {
+            PolynomialSystemSupport[i][j].push_back((rand() % 100000) + 1);
+         };
+      };
+   
    };
    
    if (ProcessCount > thread::hardware_concurrency())
@@ -302,7 +329,7 @@ int main(int argc, char* argv[])
    
    for (size_t i = 0; i != PolynomialSystemSupport.size(); i++)
       HullCones.push_back(
-         NewHull(PolynomialSystemSupport[i], VectorForOrientation, false));
+         NewHull(PolynomialSystemSupport[i], VectorForOrientation, true));
 
    // Initialize each cone's PolytopesVisited object
    for(int i = 0; i != HullCones.size(); i++)
@@ -423,8 +450,8 @@ int main(int argc, char* argv[])
    
    clock_t PrintingTimeStart = clock();
    stringstream s;
-   //StreamRayToIndexMap(Output, s);
-  // PrintMaximalCones(Output, s);
+   StreamRayToIndexMap(Output, s);
+   PrintMaximalCones(Output, s);
   
    gettimeofday(&AlgEndTime, NULL);
    double TotalAlgTime = ((AlgEndTime.tv_sec  - AlgStartTime.tv_sec) * 1000000u + 
@@ -443,7 +470,28 @@ int main(int argc, char* argv[])
    OutFile << s.str();
    OutFile.close();
    double PrintingTime = double(clock() - PrintingTimeStart) / CLOCKS_PER_SEC;
-   
+   int PositiveCount = 0; int ZeroCount = 0; int NegativeCount = 0;
+   for(map<vector<int>, int>::iterator itr = Output.RayToIndexMap.begin();
+   itr != Output.RayToIndexMap.end();
+   ++itr)
+   {
+      int testval = itr->first[itr->first.size() - 1];
+      if (testval > 0)
+      {
+      PositiveCount++;
+      };
+      if (testval == 0)
+      {
+      ZeroCount++;
+      };
+      if (testval < 0)
+      {
+      NegativeCount++;
+      };    
+   }
+   cout << "PositiveCount:" << PositiveCount << endl;
+   cout << "ZeroCount: " << ZeroCount << endl;
+   cout << "NegativeCount: " << NegativeCount << endl;
    if (false)
    {
       cout << "------ Run data ------" << endl;

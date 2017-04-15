@@ -120,6 +120,7 @@ vector<Cone> NewHull(
       PrintPoints(H.Points);
       cout << "Affine dimension: " << H.AffineDimension << endl;
       cout << "Space dimension: " << H.SpaceDimension << endl;
+      cout << "Number of cones: " << H.Cones.size() << endl;
       cout << "Number of edges: " << H.Edges.size() << endl;
       cout << "Number of facets: " << H.Facets.size() << endl << endl;
    };
@@ -149,6 +150,7 @@ void FindFacets(Hull &H)
       {
          F.PointIndices.insert(H.PointToIndexMap[*itr]);
       };
+      F.Normal = Pt;
       H.Facets.push_back(F);
    }
 }
@@ -169,24 +171,29 @@ void FindEdges(Hull &H)
       int Point2 = CandidateEdge[1];
    
       int FacetCount = 0;
+      vector<int> VectorInCone(H.CPolyhedron.space_dimension());
       for (vector<Facet>::iterator FacetIt = H.Facets.begin();
-           FacetIt != H.Facets.end(); 
+           FacetIt != H.Facets.end();
            FacetIt++)
       {
          set<int> PtIndices = FacetIt->PointIndices;
          bool Point1IsInFacet = PtIndices.find(Point1) != PtIndices.end();
          bool Point2IsInFacet = PtIndices.find(Point2) != PtIndices.end();
          if (Point1IsInFacet and Point2IsInFacet)
+         {
             FacetCount++;
+            for (size_t i = 0; i != VectorInCone.size(); i++)
+               VectorInCone[i] = VectorInCone[i] + FacetIt->Normal[i];
+         }
       };
-
-      if (FacetCount >= Dim)
+      if ((FacetCount >= Dim)
+      && (FindInitialForm(H.Points, VectorInCone).size() == 2))
       {
          Edge NewEdge;
          NewEdge.PointIndices.insert(Point1);
          NewEdge.PointIndices.insert(Point2);
          H.Edges.push_back(NewEdge);
-      }
+      };
    };
    
    // After all of the edges have been generated, 
