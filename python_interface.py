@@ -27,8 +27,9 @@
 """
 
 from subprocess import Popen, PIPE
-#Modify the below line for your own machine
-pathToPrevariety = "/home/jeff/HybridPrevariety/"
+#The below should work for generic machines
+import os, inspect
+pathToPrevariety = os.path.dirname(inspect.stack()[0][1]) + '/'
 
 def TropicalPrevariety(support, ProcessCount = 1):
 	support = str(support)
